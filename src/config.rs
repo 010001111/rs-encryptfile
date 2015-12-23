@@ -1,7 +1,7 @@
 pub const PW_KEY_SIZE: usize = 64;
 pub const IV_SIZE: usize = 16;
 
-use std::io::{Read,Write};
+use std::io::{Read, Write};
 
 pub type PwKeyArray = [u8; PW_KEY_SIZE];
 
@@ -11,36 +11,36 @@ pub enum InputStream {
     Unknown,
     Stdin,
     File(String),
-    Reader(Box<Read>)
+    Reader(Box<Read>),
 }
 
 pub enum OutputStream {
     Unknown,
     Stdout,
     File(String),
-    Writer(Box<Write>)
+    Writer(Box<Write>),
 }
 
 pub enum OutputFormat {
-    //EncryptedZip,
+    // EncryptedZip,
     EncryptFile,
 }
 
 pub enum RngMode {
     OsIssac,
     OsRandIssac,
-    Func(Box<Fn() -> u8>)
+    Func(Box<Fn() -> u8>),
 }
 
 pub enum InitializationVector {
     Unknown,
     GenerateFromRng,
     Data(IvArray),
-    Func(Box<Fn() -> IvArray>)
+    Func(Box<Fn() -> IvArray>),
 }
 
 pub enum EncryptionMethod {
-    AesCbc256
+    AesCbc256,
 }
 
 pub enum LineEndingOnEncrypt {
@@ -50,21 +50,21 @@ pub enum LineEndingOnEncrypt {
 
 pub enum LineEndingOnDecrypt {
     Ignore,
-    ConvertToOs
+    ConvertToOs,
 }
 
 pub struct ScryptLogN(pub u8);
 pub struct ScryptR(pub u32);
 pub struct ScryptP(pub u32);
 pub enum PasswordKeyGenMethod {
-    Scrypt(ScryptLogN,ScryptR,ScryptP)
+    Scrypt(ScryptLogN, ScryptR, ScryptP),
 }
 
 pub enum PasswordType {
     Unknown,
-    Cleartext(String,PasswordKeyGenMethod), // Note: leading/trailing whitespace is not trimmed on these
+    Cleartext(String, PasswordKeyGenMethod), /* Note: leading/trailing whitespace is not trimmed on these */
     Data(PwKeyArray),
-    Func(Box<Fn() -> PwKeyArray>)
+    Func(Box<Fn() -> PwKeyArray>),
 }
 
 #[derive(Debug)]
@@ -89,16 +89,16 @@ pub struct Config {
     pub salt: String,
     pub encryption_method: EncryptionMethod,
     pub buffer_size: usize,
-    pub remove_input_after_encrypt: bool
+    pub remove_input_after_encrypt: bool,
 }
 
-pub fn slice_is_zeroed(d:&[u8]) -> bool {
+pub fn slice_is_zeroed(d: &[u8]) -> bool {
     d.iter().find(|b| **b != 0).is_none()
 }
 
 pub fn default_scrypt_params() -> PasswordKeyGenMethod {
     // TODO: check these
-    PasswordKeyGenMethod::Scrypt(ScryptLogN(4),ScryptR(4),ScryptP(4))
+    PasswordKeyGenMethod::Scrypt(ScryptLogN(4), ScryptR(4), ScryptP(4))
 }
 
 impl Config {
@@ -115,55 +115,57 @@ impl Config {
             salt: "DefaultSalt".to_owned(),
             encryption_method: EncryptionMethod::AesCbc256,
             buffer_size: 65536,
-            remove_input_after_encrypt: false
+            remove_input_after_encrypt: false,
         }
     }
 
-    pub fn input_stream(&mut self, is:InputStream) -> &mut Self {
+    pub fn input_stream(&mut self, is: InputStream) -> &mut Self {
         self.input_stream = is;
         self
     }
-    pub fn output_stream(&mut self, os:OutputStream) -> &mut Self {
+    pub fn output_stream(&mut self, os: OutputStream) -> &mut Self {
         self.output_stream = os;
         self
     }
-    pub fn line_ending_encrypt(&mut self, line_ending_encrypt:LineEndingOnEncrypt) -> &mut Self {
+    pub fn line_ending_encrypt(&mut self, line_ending_encrypt: LineEndingOnEncrypt) -> &mut Self {
         self.line_ending_encrypt = line_ending_encrypt;
         self
     }
-    pub fn line_ending_decrypt(&mut self, line_ending_decrypt:LineEndingOnDecrypt) -> &mut Self {
+    pub fn line_ending_decrypt(&mut self, line_ending_decrypt: LineEndingOnDecrypt) -> &mut Self {
         self.line_ending_decrypt = line_ending_decrypt;
         self
     }
-    pub fn rng_mode(&mut self, rng_mode:RngMode) -> &mut Self {
+    pub fn rng_mode(&mut self, rng_mode: RngMode) -> &mut Self {
         self.rng_mode = rng_mode;
         self
     }
-    pub fn initialization_vector(&mut self, initialization_vector:InitializationVector) -> &mut Self {
+    pub fn initialization_vector(&mut self,
+                                 initialization_vector: InitializationVector)
+                                 -> &mut Self {
         self.initialization_vector = initialization_vector;
         self
     }
-    pub fn password(&mut self, password:PasswordType) -> &mut Self {
+    pub fn password(&mut self, password: PasswordType) -> &mut Self {
         self.password = password;
         self
     }
-    pub fn salt(&mut self, salt:String) -> &mut Self {
+    pub fn salt(&mut self, salt: String) -> &mut Self {
         self.salt = salt;
         self
     }
-    pub fn encryption_method(&mut self, encryption_method:EncryptionMethod) -> &mut Self {
+    pub fn encryption_method(&mut self, encryption_method: EncryptionMethod) -> &mut Self {
         self.encryption_method = encryption_method;
         self
     }
-    pub fn buffer_size(&mut self, buffer_size:usize) -> &mut Self {
+    pub fn buffer_size(&mut self, buffer_size: usize) -> &mut Self {
         self.buffer_size = buffer_size;
         self
     }
-    pub fn remove_input_after_encrypt(&mut self, remove_input_after_encrypt:bool) -> &mut Self {
+    pub fn remove_input_after_encrypt(&mut self, remove_input_after_encrypt: bool) -> &mut Self {
         self.remove_input_after_encrypt = remove_input_after_encrypt;
         self
     }
-    pub fn validate(&self) -> Result<(),ValidateError> {
+    pub fn validate(&self) -> Result<(), ValidateError> {
         if let InputStream::Unknown = self.input_stream {
             return Err(ValidateError::InvalidInputStream);
         }
@@ -171,22 +173,22 @@ impl Config {
             return Err(ValidateError::InvalidOutputStream);
         }
         match self.password {
-            PasswordType::Unknown =>
-                return Err(ValidateError::PasswordTypeIsUnknown),
-            PasswordType::Cleartext(ref s, _) if s.is_empty() =>
-                return Err(ValidateError::PasswordIsEmpty),
+            PasswordType::Unknown => return Err(ValidateError::PasswordTypeIsUnknown),
+            PasswordType::Cleartext(ref s, _) if s.is_empty() => {
+                return Err(ValidateError::PasswordIsEmpty)
+            }
 
             PasswordType::Data(ref d) => {
                 if slice_is_zeroed(d) {
-                    return Err(ValidateError::PasswordDataIsAllZero)
+                    return Err(ValidateError::PasswordDataIsAllZero);
                 }
-            },
+            }
 
-            PasswordType::Func(_)
-            | PasswordType::Cleartext(_, _) => (),
+            PasswordType::Func(_) |
+            PasswordType::Cleartext(_, _) => (),
         }
         if self.buffer_size < 4096 {
-            return Err(ValidateError::BufferTooSmall)
+            return Err(ValidateError::BufferTooSmall);
         }
 
         Ok(())
@@ -225,7 +227,7 @@ fn validate() {
     c.password(PasswordType::Cleartext("    ".to_owned(), default_scrypt_params()));
     check_ok!(c);
 
-    let mut pd:[u8; PW_KEY_SIZE] = [0; PW_KEY_SIZE];
+    let mut pd: [u8; PW_KEY_SIZE] = [0; PW_KEY_SIZE];
     c.password(PasswordType::Data(pd));
     check!(c, ValidateError::PasswordDataIsAllZero);
     pd[0] = 1;

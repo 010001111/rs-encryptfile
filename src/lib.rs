@@ -177,6 +177,8 @@ struct FileHeader {
     hmac_len:u32
 }
 
+const HEADER_RESERVED:usize = 40; // reserved space after FileHeader
+
 impl FileHeader {
     pub fn write(&self, s:&mut Write) -> std::io::Result<()> {
         try!(s.write_u64::<LittleEndian>(self.magic));
@@ -193,7 +195,7 @@ fn encrypt(c:&Config, state:EncryptState, mut in_stream:Box<SeekRead>, mut out_s
 
     // reserve space for header + hmac
     let header_size = std::mem::size_of::<FileHeader>();
-    let header_capacity = header_size + 4096;
+    let header_capacity = header_size + HEADER_RESERVED;
     let header:Vec<u8> = vec![0;header_capacity];
     try!(out_stream.write_all(&header));
 

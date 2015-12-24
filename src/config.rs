@@ -1,7 +1,7 @@
+use std::io::{Read, Write, Seek};
+
 pub const PW_KEY_SIZE: usize = 64;
 pub const IV_SIZE: usize = 16;
-
-use std::io::{Read, Write, Seek};
 
 pub type PwKeyArray = [u8; PW_KEY_SIZE];
 

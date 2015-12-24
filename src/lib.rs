@@ -16,10 +16,10 @@ extern crate crypto;
 use self::crypto::scrypt::{scrypt, ScryptParams};
 use self::crypto::symmetriccipher::SymmetricCipherError;
 
-pub use config::{Config, PW_KEY_SIZE, IV_SIZE, PwKeyArray, IvArray, ScryptR, ScryptP, ScryptLogN};
-
-use config::{PasswordType, PasswordKeyGenMethod, InitializationVector, RngMode, InputStream,
-    Mode, OutputStream,SeekRead,SeekWrite};
+pub use config::{Config, PW_KEY_SIZE, IV_SIZE, PwKeyArray, IvArray, ScryptR, ScryptP, ScryptLogN,
+    PasswordType, PasswordKeyGenMethod, InitializationVector, RngMode, InputStream,
+        Mode, OutputStream,SeekRead,SeekWrite, default_scrypt_params
+};
 
 mod config;
 mod crypto_util;

@@ -63,7 +63,7 @@ pub fn make_scrypt_key(password: &str,
                        logn: &ScryptLogN,
                        r: &ScryptR,
                        p: &ScryptP)
-                       -> [u8; config::PW_KEY_SIZE] {
+                       -> PwKeyArray {
     let &ScryptLogN(logn) = logn;
     let &ScryptR(r) = r;
     let &ScryptP(p) = p;
@@ -71,7 +71,7 @@ pub fn make_scrypt_key(password: &str,
     let salt = salt.as_bytes();
     let pw_bytes = password.as_bytes();
 
-    let mut ek: [u8; PW_KEY_SIZE] = [0; PW_KEY_SIZE];
+    let mut ek: PwKeyArray = [0; PW_KEY_SIZE];
 
     let params = ScryptParams::new(logn, r, p);
     scrypt(pw_bytes, salt, &params, &mut ek);
@@ -80,7 +80,7 @@ pub fn make_scrypt_key(password: &str,
 
 pub fn generate_iv(c: &Config) -> Result<config::IvArray, EncryptError> {
     let init_val = 47;
-    let mut iv: [u8; IV_SIZE] = [init_val; IV_SIZE];
+    let mut iv: IvArray = [init_val; IV_SIZE];
     if let RngMode::Func(ref bf) = c.rng_mode {
         for i in 0..IV_SIZE {
             iv[i] = (*bf)();
@@ -104,7 +104,7 @@ pub fn generate_iv(c: &Config) -> Result<config::IvArray, EncryptError> {
                                                                    .to_owned()))
             }
         };
-        let mut issac_rng = Isaac64Rng::from_seed(&seed);
+        let mut isaac_rng = Isaac64Rng::from_seed(&seed);
 
         // TODO: needs crypto review.
         // According to the rand crate docs, isaac64 is not supposed to be use for this.
@@ -116,7 +116,7 @@ pub fn generate_iv(c: &Config) -> Result<config::IvArray, EncryptError> {
         }
         {
             let mut second = &mut iv[IV_SIZE / 2..IV_SIZE];
-            issac_rng.fill_bytes(second);
+            isaac_rng.fill_bytes(second);
         }
     }
 
@@ -191,7 +191,7 @@ fn encrypt(c:&Config, state:EncryptState, mut in_stream:Box<SeekRead>, mut out_s
     let mut crypto = crypto_util::CryptoHelper::new(&state.pwkey,&state.iv);
     let mut buf = state.read_buf;
 
-    // reserve space for header
+    // reserve space for header + hmac
     let header_size = std::mem::size_of::<FileHeader>();
     let header_capacity = header_size + 4096;
     let header:Vec<u8> = vec![0;header_capacity];
@@ -206,7 +206,6 @@ fn encrypt(c:&Config, state:EncryptState, mut in_stream:Box<SeekRead>, mut out_s
             Err(e) => return Err(EncryptError::CryptoError(e)),
             Ok(d) => try!(out_stream.write_all(&d))
         }
-        //println!("encrypted {} bytes",num_read);
         if eof {
             break;
         }
@@ -226,7 +225,7 @@ fn encrypt(c:&Config, state:EncryptState, mut in_stream:Box<SeekRead>, mut out_s
     try!(header.write(&mut out_stream));
     // variable length hmac goes after the header:
     try!(out_stream.write_all(&hmac));
-    
+
     Ok(())
 }
 
@@ -236,9 +235,7 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
         Ok(_) => (),
     };
 
-    // obtain the password key
     let pwkey = try!(get_pw_key(c));
-    // obtain the IV
     let iv = try!(get_iv(c));
 
     // open streams
@@ -283,7 +280,6 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
 }
 
 // ===============================================================================================
-// tests
 #[cfg(test)]
 mod tests {
     use config::*;

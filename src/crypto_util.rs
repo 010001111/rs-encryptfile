@@ -53,7 +53,7 @@ impl CryptoHelper {
 
     pub fn encrypt(&mut self, data: &[u8], is_all_data:bool) -> Result<Vec<u8>, symmetriccipher::SymmetricCipherError> {
         if self.got_eof_on_encrypt {
-            panic!("Already received encryption eof, can't encrypt anymore; reinit crypto helper");
+            panic!("Already received encryption eof, can't encrypt anymore; reinit crypto helper"); // TODO: remove this panic
         }
         if is_all_data {
             self.got_eof_on_encrypt = true;
@@ -82,7 +82,7 @@ impl CryptoHelper {
 
     pub fn decrypt(&mut self, encrypted_data: &[u8], is_all_data:bool) -> Result<Vec<u8>, symmetriccipher::SymmetricCipherError> {
         if self.got_eof_on_decrypt {
-            panic!("Already received decryption eof, can't decrypt anymore; reinit crypto helper");
+            panic!("Already received decryption eof, can't decrypt anymore; reinit crypto helper"); // TODO: remove this panic
         }
         if is_all_data {
             self.got_eof_on_decrypt = true;

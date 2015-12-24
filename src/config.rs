@@ -90,6 +90,7 @@ pub enum ValidateError {
     BufferTooSmall,
 }
 
+// TODO: add option to specify whether output file should be overwritten if it exists
 pub struct Config {
     pub mode: Mode,
     pub input_stream: InputStream,

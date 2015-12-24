@@ -1,21 +1,35 @@
 #![allow(dead_code)]
 
-mod config;
+const MAGIC:u64 = 0xDEADBEEEEEEFCAFE;
+const FORMAT_VERSION:u32 = 1;
+
+use std::io::{Read,Write,Seek,SeekFrom};
+use std::fs::File;
+
+extern crate byteorder;
+use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 
 extern crate rand;
-use self::rand::{Rng, OsRng, Isaac64Rng, SeedableRng, random};
+use self::rand::{Rng, OsRng, Isaac64Rng, SeedableRng};
 
 extern crate crypto;
 use self::crypto::scrypt::{scrypt, ScryptParams};
+use self::crypto::symmetriccipher::SymmetricCipherError;
 
 pub use config::{Config, PW_KEY_SIZE, IV_SIZE, PwKeyArray, IvArray, ScryptR, ScryptP, ScryptLogN};
 
-use config::{PasswordType, PasswordKeyGenMethod, InitializationVector, RngMode};
+use config::{PasswordType, PasswordKeyGenMethod, InitializationVector, RngMode, InputStream,
+    Mode, OutputStream,SeekRead,SeekWrite};
+
+mod config;
+mod crypto_util;
 
 struct EncryptState<'a> {
     config: &'a Config,
     pwkey: config::PwKeyArray,
     iv: config::IvArray,
+    read_buf: &'a mut [u8],
+    write_buf: &'a mut [u8]
 }
 
 #[derive(Debug)]
@@ -25,8 +39,23 @@ pub enum EncryptError {
     PwKeyIsZeroed,
     IvIsZeroed,
     IvEqualsCheckValue,
+    HeaderTooSmall,
     UnexpectedEnumVariant(String),
+    ByteOrderError(byteorder::Error),
+    IoError(std::io::Error),
+    CryptoError(SymmetricCipherError),
     InternalError,
+}
+
+impl From<std::io::Error> for EncryptError {
+    fn from(e:std::io::Error) -> Self {
+        EncryptError::IoError(e)
+    }
+}
+impl From<byteorder::Error> for EncryptError {
+    fn from(e:byteorder::Error) -> Self {
+        EncryptError::ByteOrderError(e)
+    }
 }
 
 pub fn make_scrypt_key(password: &str,
@@ -141,7 +170,67 @@ fn get_iv(c: &Config) -> Result<IvArray, EncryptError> {
     })
 }
 
-pub fn encrypt(c: &Config) -> Result<(), EncryptError> {
+struct FileHeader {
+    magic:u64,
+    fversion:u32,
+    iv:IvArray,
+    hmac_len:u32
+}
+
+impl FileHeader {
+    pub fn write(&self, s:&mut Write) -> std::io::Result<()> {
+        try!(s.write_u64::<LittleEndian>(self.magic));
+        try!(s.write_u32::<LittleEndian>(self.fversion));
+        try!(s.write_all(&self.iv));
+        try!(s.write_u32::<LittleEndian>(self.hmac_len));
+        Ok(())
+    }
+}
+
+fn encrypt(c:&Config, state:EncryptState, mut in_stream:Box<SeekRead>, mut out_stream:Box<SeekWrite>) -> Result<(), EncryptError> {
+    let mut crypto = crypto_util::CryptoHelper::new(&state.pwkey,&state.iv);
+    let mut buf = state.read_buf;
+
+    // reserve space for header
+    let header_size = std::mem::size_of::<FileHeader>();
+    let header_capacity = header_size + 4096;
+    let header:Vec<u8> = vec![0;header_capacity];
+    try!(out_stream.write_all(&header));
+
+    loop {
+        let num_read = try!(in_stream.read(buf));
+        let enc_bytes = &buf[0 .. num_read];
+        let eof = num_read == 0;
+        let res = crypto.encrypt(enc_bytes, eof);
+        match res {
+            Err(e) => return Err(EncryptError::CryptoError(e)),
+            Ok(d) => try!(out_stream.write_all(&d))
+        }
+        //println!("encrypted {} bytes",num_read);
+        if eof {
+            break;
+        }
+    }
+
+    let hmac = crypto_util::hmac_to_vec(&mut crypto.encrypt_hmac);
+    if hmac.len() + header_size >= header_capacity {
+        return Err(EncryptError::HeaderTooSmall)
+    }
+    let header = FileHeader {
+        magic: MAGIC,
+        fversion: FORMAT_VERSION,
+        iv: state.iv.clone(),
+        hmac_len: hmac.len() as u32,
+    };
+    try!(out_stream.seek(SeekFrom::Start(0)));
+    try!(header.write(&mut out_stream));
+    // variable length hmac goes after the header:
+    try!(out_stream.write_all(&hmac));
+    
+    Ok(())
+}
+
+pub fn process(c: &Config) -> Result<(), EncryptError> {
     match c.validate() {
         Err(e) => return Err(EncryptError::ValidateFailed(e)),
         Ok(_) => (),
@@ -152,15 +241,49 @@ pub fn encrypt(c: &Config) -> Result<(), EncryptError> {
     // obtain the IV
     let iv = try!(get_iv(c));
 
+    // open streams
+    let in_stream:Box<SeekRead> = match c.input_stream {
+        InputStream::Unknown =>
+            return Err(EncryptError::UnexpectedEnumVariant(
+                    "Unknown InputStream not allowed here".to_owned())),
+        InputStream::Stdin => unimplemented!(), // TODO//Box::new(std::io::stdin()),
+        InputStream::File(ref file) => Box::new(try!(File::open(file))),
+        InputStream::Reader(_) => unimplemented!(), // TODO
+    };
+
+    let out_stream:Box<SeekWrite> = match c.output_stream {
+        OutputStream::Unknown =>
+            return Err(EncryptError::UnexpectedEnumVariant(
+                    "Unknown OutputStream not allowed here".to_owned())),
+        OutputStream::Stdout => unimplemented!(),// TODO: not sure I can support this, since I need to seek to write the hmac
+        OutputStream::File(ref file) => Box::new(try!(File::create(file))),
+        OutputStream::Writer(_) => unimplemented!(), // TODO
+    };
+
+    // heap-alloc buffers
+    let mut read_buf: Vec<u8> = vec![0;c.buffer_size];
+    let mut write_buf: Vec<u8> = vec![0;c.buffer_size];
+
     let state = EncryptState {
         config: c,
         pwkey: pwkey,
         iv: iv,
+        read_buf: &mut read_buf,
+        write_buf: &mut write_buf,
     };
+
+    match c.mode {
+        Mode::Unknown => return Err(EncryptError::UnexpectedEnumVariant(
+                "Unknown Mode not allowed here".to_owned())),
+        Mode::Encrypt => try!(encrypt(c,state,in_stream,out_stream)),
+        Mode::Decrypt => {},
+    }
 
     Ok(())
 }
 
+// ===============================================================================================
+// tests
 #[cfg(test)]
 mod tests {
     use config::*;

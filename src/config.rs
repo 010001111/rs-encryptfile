@@ -1,17 +1,29 @@
 pub const PW_KEY_SIZE: usize = 64;
 pub const IV_SIZE: usize = 16;
 
-use std::io::{Read, Write};
+use std::io::{Read, Write, Seek};
 
 pub type PwKeyArray = [u8; PW_KEY_SIZE];
 
 pub type IvArray = [u8; IV_SIZE];
 
+pub enum Mode {
+    Unknown,
+    Encrypt,
+    Decrypt
+}
+
+pub trait SeekRead: Seek + Read {}
+impl<T> SeekRead for T where T: Seek + Read {}
+
+pub trait SeekWrite: Seek + Write {}
+impl<T> SeekWrite for T where T: Seek + Write {}
+
 pub enum InputStream {
     Unknown,
     Stdin,
     File(String),
-    Reader(Box<Read>),
+    Reader(Box<Seek>),
 }
 
 pub enum OutputStream {
@@ -69,6 +81,7 @@ pub enum PasswordType {
 
 #[derive(Debug)]
 pub enum ValidateError {
+    ModeNotSet,
     InvalidInputStream,
     InvalidOutputStream,
     PasswordTypeIsUnknown,
@@ -78,6 +91,7 @@ pub enum ValidateError {
 }
 
 pub struct Config {
+    pub mode: Mode,
     pub input_stream: InputStream,
     pub output_stream: OutputStream,
     pub output_format: OutputFormat,
@@ -104,6 +118,7 @@ pub fn default_scrypt_params() -> PasswordKeyGenMethod {
 impl Config {
     pub fn new() -> Self {
         Config {
+            mode: Mode::Unknown,
             input_stream: InputStream::Unknown,
             output_stream: OutputStream::Unknown,
             output_format: OutputFormat::EncryptFile,
@@ -119,6 +134,14 @@ impl Config {
         }
     }
 
+    pub fn decrypt(&mut self) -> &mut Self {
+        self.mode = Mode::Decrypt;
+        self
+    }
+    pub fn encrypt(&mut self) -> &mut Self {
+        self.mode = Mode::Encrypt;
+        self
+    }
     pub fn input_stream(&mut self, is: InputStream) -> &mut Self {
         self.input_stream = is;
         self
@@ -166,6 +189,9 @@ impl Config {
         self
     }
     pub fn validate(&self) -> Result<(), ValidateError> {
+        if let Mode::Unknown = self.mode {
+            return Err(ValidateError::ModeNotSet);
+        }
         if let InputStream::Unknown = self.input_stream {
             return Err(ValidateError::InvalidInputStream);
         }
@@ -216,6 +242,8 @@ fn validate() {
 
     let mut c = Config::new();
 
+    check!(c, ValidateError::ModeNotSet);
+    c.decrypt();
     check!(c, ValidateError::InvalidInputStream);
     c.input_stream(InputStream::Stdin);
     check!(c, ValidateError::InvalidOutputStream);

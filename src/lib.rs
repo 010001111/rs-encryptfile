@@ -4,7 +4,8 @@ const MAGIC:u64 = 0xDEADBEEEEEEFCAFE;
 const FORMAT_VERSION:u32 = 1;
 
 use std::io::{Read,Write,Seek,SeekFrom};
-use std::fs::File;
+use std::fs::{File,remove_file,rename,OpenOptions};
+use std::path::PathBuf;
 
 extern crate byteorder;
 use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
@@ -15,6 +16,7 @@ use self::rand::{Rng, OsRng, Isaac64Rng, SeedableRng};
 extern crate crypto;
 use self::crypto::scrypt::{scrypt, ScryptParams};
 use self::crypto::symmetriccipher::SymmetricCipherError;
+use self::crypto::mac::{Mac,MacResult};
 
 pub use config::{Config, PW_KEY_SIZE, IV_SIZE, PwKeyArray, IvArray, ScryptR, ScryptP, ScryptLogN,
     PasswordType, PasswordKeyGenMethod, InitializationVector, RngMode, InputStream,
@@ -40,6 +42,12 @@ pub enum EncryptError {
     IvIsZeroed,
     IvEqualsCheckValue,
     HeaderTooSmall,
+    ShortIvRead,
+    ShortHmacRead,
+    BadHeaderMagic,
+    UnexpectedVersion(u32,u32),
+    InvalidHmacLength,
+    HmacMismatch,
     UnexpectedEnumVariant(String),
     ByteOrderError(byteorder::Error),
     IoError(std::io::Error),
@@ -55,6 +63,76 @@ impl From<std::io::Error> for EncryptError {
 impl From<byteorder::Error> for EncryptError {
     fn from(e:byteorder::Error) -> Self {
         EncryptError::ByteOrderError(e)
+    }
+}
+
+pub struct TempFileRemover {
+    pub filename: String
+}
+
+impl Drop for TempFileRemover {
+    fn drop(&mut self) {
+        let pb = PathBuf::from(&self.filename);
+        if pb.is_file() {
+            match remove_file(&self.filename) {
+                Err(e) => println!("Failed to remove temporary file: {}: {}", &self.filename, e),
+                Ok(_) => ()
+            }
+        }
+    }
+}
+
+struct FileHeader {
+    magic:u64,
+    fversion:u32,
+    iv:IvArray,
+    hmac_len:u32
+}
+
+const HEADER_RESERVED:usize = 40; // reserved space after FileHeader
+
+impl FileHeader {
+    pub fn write(&self, s:&mut Write) -> Result<(),EncryptError> {
+        try!(s.write_u64::<LittleEndian>(self.magic));
+        try!(s.write_u32::<LittleEndian>(self.fversion));
+        try!(s.write_u32::<LittleEndian>(self.hmac_len));
+        try!(s.write_all(&self.iv));
+        Ok(())
+    }
+
+    pub fn verify(&self) -> Result<(), EncryptError> {
+        if self.magic != MAGIC {
+            return Err(EncryptError::BadHeaderMagic);
+        }
+        if self.fversion != FORMAT_VERSION {
+            return Err(EncryptError::UnexpectedVersion(self.fversion,FORMAT_VERSION));
+        }
+        if self.hmac_len == 0 {
+            return Err(EncryptError::InvalidHmacLength);
+        }
+        if config::slice_is_zeroed(&self.iv) {
+            return Err(EncryptError::IvIsZeroed);
+        }
+        Ok(())
+    }
+
+    pub fn read(s:&mut Read) -> Result<FileHeader, EncryptError> {
+        let mut header = FileHeader {
+            magic: try!(s.read_u64::<LittleEndian>()),
+            fversion: try!(s.read_u32::<LittleEndian>()),
+            hmac_len: try!(s.read_u32::<LittleEndian>()),
+            iv: [0;IV_SIZE],
+        };
+
+        // TODO: use read_exact when it is stable
+        let nread = try!(s.read(&mut header.iv));
+        if nread != IV_SIZE {
+            return Err(EncryptError::ShortIvRead);
+        }
+
+        try!(header.verify());
+
+        Ok(header)
     }
 }
 
@@ -170,25 +248,6 @@ fn get_iv(c: &Config) -> Result<IvArray, EncryptError> {
     })
 }
 
-struct FileHeader {
-    magic:u64,
-    fversion:u32,
-    iv:IvArray,
-    hmac_len:u32
-}
-
-const HEADER_RESERVED:usize = 40; // reserved space after FileHeader
-
-impl FileHeader {
-    pub fn write(&self, s:&mut Write) -> std::io::Result<()> {
-        try!(s.write_u64::<LittleEndian>(self.magic));
-        try!(s.write_u32::<LittleEndian>(self.fversion));
-        try!(s.write_all(&self.iv));
-        try!(s.write_u32::<LittleEndian>(self.hmac_len));
-        Ok(())
-    }
-}
-
 fn encrypt(c:&Config, state:EncryptState, mut in_stream:Box<SeekRead>, mut out_stream:Box<SeekWrite>) -> Result<(), EncryptError> {
     let mut crypto = crypto_util::CryptoHelper::new(&state.pwkey,&state.iv);
     let mut buf = state.read_buf;
@@ -231,6 +290,46 @@ fn encrypt(c:&Config, state:EncryptState, mut in_stream:Box<SeekRead>, mut out_s
     Ok(())
 }
 
+fn decrypt(c:&Config, state:EncryptState, mut in_stream:Box<SeekRead>, mut out_stream:Box<SeekWrite>) -> Result<(), EncryptError> {
+    let mut buf = state.read_buf;
+    let header = try!(FileHeader::read(&mut in_stream));
+
+    // TODO: use read_exact when stable
+    let hmac_len = header.hmac_len as usize;
+    let mut hmac_bytes:Vec<u8> = vec![0;hmac_len];
+    let nread = try!(in_stream.read(&mut hmac_bytes));
+    if nread != hmac_len {
+        return Err(EncryptError::ShortHmacRead);
+    }
+    let mut crypto = crypto_util::CryptoHelper::new(&state.pwkey,&header.iv);
+    // seek to data pos
+    let header_size = std::mem::size_of::<FileHeader>();
+    let header_capacity = header_size + HEADER_RESERVED;
+    try!(in_stream.seek(SeekFrom::Start(header_capacity as u64)));
+
+    loop {
+        let num_read = try!(in_stream.read(buf));
+        let enc_bytes = &buf[0 .. num_read];
+        let eof = num_read == 0;
+        let res = crypto.decrypt(enc_bytes, eof);
+        match res {
+            Err(e) => return Err(EncryptError::CryptoError(e)),
+            Ok(d) => try!(out_stream.write_all(&d))
+        }
+        if eof {
+            break;
+        }
+    }
+
+    let mut computed_hmac = crypto.decrypt_hmac;
+    let expected_hmac = MacResult::new(&hmac_bytes);
+    if computed_hmac.result() != expected_hmac {
+        return Err(EncryptError::HmacMismatch)
+    }
+
+    Ok(())
+}
+
 pub fn process(c: &Config) -> Result<(), EncryptError> {
     match c.validate() {
         Err(e) => return Err(EncryptError::ValidateFailed(e)),
@@ -238,7 +337,7 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
     };
 
     let pwkey = try!(get_pw_key(c));
-    let iv = try!(get_iv(c));
+    let iv = try!(get_iv(c)); // TODO: don't do this if decrypting
 
     // open streams
     let in_stream:Box<SeekRead> = match c.input_stream {
@@ -255,7 +354,8 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
             return Err(EncryptError::UnexpectedEnumVariant(
                     "Unknown OutputStream not allowed here".to_owned())),
         OutputStream::Stdout => unimplemented!(),// TODO: not sure I can support this, since I need to seek to write the hmac
-        OutputStream::File(ref file) => Box::new(try!(File::create(file))),
+        OutputStream::File(ref file) =>
+            Box::new(try!(OpenOptions::new().read(true).write(true).create(true).open(file))),
         OutputStream::Writer(_) => unimplemented!(), // TODO
     };
 
@@ -275,7 +375,24 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
         Mode::Unknown => return Err(EncryptError::UnexpectedEnumVariant(
                 "Unknown Mode not allowed here".to_owned())),
         Mode::Encrypt => try!(encrypt(c,state,in_stream,out_stream)),
-        Mode::Decrypt => {},
+        Mode::Decrypt => {
+            if let OutputStream::File(ref fname) = c.output_stream {
+                // if decrypting to file, since we have to verify the hmac, don't write directly
+                // to the target.  write to a temporary
+                // file, then move it over the target path if the decryption & hmac check succeed.
+
+                // make a temp path in same directory
+                let tmp_outpath = format!("{}.{}.gc_tmp", fname, rand::random::<u64>());
+                let remover = TempFileRemover { filename: tmp_outpath.to_owned() };
+                let _ = remover; // silence warning
+                let tstream = try!(File::create(&tmp_outpath));
+                try!(decrypt(c, state, in_stream, Box::new(tstream)));
+                drop(out_stream);
+                try!(rename(tmp_outpath, fname));
+            } else {
+                try!(decrypt(c, state, in_stream, out_stream))
+            }
+        },
     }
 
     Ok(())

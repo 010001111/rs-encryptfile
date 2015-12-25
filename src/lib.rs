@@ -248,7 +248,7 @@ fn get_iv(c: &Config) -> Result<IvArray, EncryptError> {
     })
 }
 
-fn encrypt(c:&Config, state:EncryptState, mut in_stream:Box<SeekRead>, mut out_stream:Box<SeekWrite>) -> Result<(), EncryptError> {
+fn encrypt(state:EncryptState, mut in_stream:Box<SeekRead>, mut out_stream:Box<SeekWrite>) -> Result<(), EncryptError> {
     let mut crypto = crypto_util::CryptoHelper::new(&state.pwkey,&state.iv);
     let mut buf = state.read_buf;
 
@@ -284,13 +284,13 @@ fn encrypt(c:&Config, state:EncryptState, mut in_stream:Box<SeekRead>, mut out_s
     };
     try!(out_stream.seek(SeekFrom::Start(0)));
     try!(header.write(&mut out_stream));
-    // variable length hmac goes after the header:
+    // hmac goes after the header
     try!(out_stream.write_all(&hmac));
 
     Ok(())
 }
 
-fn decrypt(c:&Config, state:EncryptState, mut in_stream:Box<SeekRead>, mut out_stream:Box<SeekWrite>) -> Result<(), EncryptError> {
+fn decrypt(state:EncryptState, mut in_stream:Box<SeekRead>, mut out_stream:Box<SeekWrite>) -> Result<(), EncryptError> {
     let mut buf = state.read_buf;
     let header = try!(FileHeader::read(&mut in_stream));
 
@@ -374,7 +374,7 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
     match c.mode {
         Mode::Unknown => return Err(EncryptError::UnexpectedEnumVariant(
                 "Unknown Mode not allowed here".to_owned())),
-        Mode::Encrypt => try!(encrypt(c,state,in_stream,out_stream)),
+        Mode::Encrypt => try!(encrypt(state,in_stream,out_stream)),
         Mode::Decrypt => {
             if let OutputStream::File(ref fname) = c.output_stream {
                 // if decrypting to file, since we have to verify the hmac, don't write directly
@@ -386,11 +386,11 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
                 let remover = TempFileRemover { filename: tmp_outpath.to_owned() };
                 let _ = remover; // silence warning
                 let tstream = try!(File::create(&tmp_outpath));
-                try!(decrypt(c, state, in_stream, Box::new(tstream)));
+                try!(decrypt(state, in_stream, Box::new(tstream)));
                 drop(out_stream);
                 try!(rename(tmp_outpath, fname));
             } else {
-                try!(decrypt(c, state, in_stream, out_stream))
+                try!(decrypt(state, in_stream, out_stream))
             }
         },
     }

@@ -97,9 +97,15 @@ pub fn slice_is_zeroed(d: &[u8]) -> bool {
     d.iter().find(|b| **b != 0).is_none()
 }
 
+#[cfg(not(test))]
 pub fn default_scrypt_params() -> PasswordKeyGenMethod {
     // http://stackoverflow.com/questions/11126315/what-are-optimal-scrypt-work-factors
     PasswordKeyGenMethod::Scrypt(ScryptLogN(16), ScryptR(8), ScryptP(1))
+}
+#[cfg(test)]
+pub fn default_scrypt_params() -> PasswordKeyGenMethod {
+    // don't melt my laptop
+    PasswordKeyGenMethod::Scrypt(ScryptLogN(4), ScryptR(1), ScryptP(1))
 }
 
 impl Config {

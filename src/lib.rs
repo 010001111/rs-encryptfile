@@ -152,7 +152,6 @@ fn get_iv(c: &Config) -> Result<IvArray, EncryptError> {
     match c.initialization_vector {
         InitializationVector::Unknown =>
             Err(EncryptError::UnexpectedEnumVariant("Unknown IV not allowed here".to_owned())),
-        InitializationVector::Data(d) => Ok(d.clone()),
         InitializationVector::Func(ref bf) => Ok((*bf)()),
         InitializationVector::GenerateFromRng => generate_iv(c)
     }
@@ -361,10 +360,6 @@ mod tests {
         let mut c = Config::new();
 
         let iv: IvArray = [89; IV_SIZE];
-        c.initialization_vector(InitializationVector::Data(iv));
-        let geniv = super::get_iv(&c).unwrap();
-        check_eq(&iv, &geniv, format!("Data iv variant failed"));
-
         let expected = iv;
         let ivfn = Box::new(move || iv);
         c.initialization_vector(InitializationVector::Func(ivfn));
@@ -372,7 +367,7 @@ mod tests {
         check_eq(&geniv, &expected, format!("Func iv variant failed"));
 
         let iv: IvArray = [0; IV_SIZE];
-        c.initialization_vector(InitializationVector::Data(iv));
+        c.initialization_vector(InitializationVector::Func(Box::new(move || iv)));
         let geniv = super::get_iv(&c);
         let _ = geniv.map(|_| panic!("Expected error, but got valid iv"));
     }

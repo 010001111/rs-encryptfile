@@ -45,7 +45,6 @@ pub enum RngMode {
 pub enum InitializationVector {
     Unknown,
     GenerateFromRng,
-    Data(IvArray),
     Func(Box<Fn() -> IvArray>),
 }
 

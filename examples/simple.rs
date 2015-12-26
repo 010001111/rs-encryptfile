@@ -1,4 +1,4 @@
-use std::fs::File;
+
 use std::env;
 use std::path::PathBuf;
 
@@ -33,8 +33,8 @@ fn main() {
             c.encrypt();
         },
         "decrypt" => {
-            let mut out_file = PathBuf::from(&in_file).file_name().unwrap().to_str().unwrap().to_owned();
-            let mut out_file = out_file.replace(".enc", "");
+            let out_file = PathBuf::from(&in_file).file_name().unwrap().to_str().unwrap().to_owned();
+            let out_file = out_file.replace(".enc", "");
             c.output_stream(encryptfile::OutputStream::File(out_file.to_owned()));
             c.decrypt();
         },

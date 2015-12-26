@@ -1,3 +1,6 @@
+//#![feature(plugin)]
+//#![plugin(clippy)]
+
 use std::io::{Read, Write};
 use std::fs::{File, rename, OpenOptions};
 
@@ -76,8 +79,8 @@ pub fn generate_iv(c: &Config) -> Result<config::IvArray, EncryptError> {
     let init_val = 47;
     let mut iv: IvArray = [init_val; IV_SIZE];
     if let RngMode::Func(ref bf) = c.rng_mode {
-        for i in 0..IV_SIZE {
-            iv[i] = (*bf)();
+        for item in &mut iv {
+            *item = (*bf)();
         }
     } else {
         let mut os_rng = match OsRng::new() {
@@ -138,7 +141,7 @@ fn get_pw_key(c: &Config) -> Result<PwKeyArray, EncryptError> {
         if config::slice_is_zeroed(&pwkey) {
             // while its technically possible to have zeroed data at this point, its really
             // unlikely and probably indicates a bug.
-            return Err(EncryptError::PwKeyIsZeroed);
+            Err(EncryptError::PwKeyIsZeroed)
         } else {
             Ok(pwkey)
         }
@@ -157,7 +160,7 @@ fn get_iv(c: &Config) -> Result<IvArray, EncryptError> {
         if config::slice_is_zeroed(&iv) {
             // while its technically possible to have zeroed data at this point, its really unlikely and
             // probably indicates a bug.
-            return Err(EncryptError::IvIsZeroed);
+            Err(EncryptError::IvIsZeroed)
         } else {
             Ok(iv)
         }

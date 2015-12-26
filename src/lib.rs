@@ -179,19 +179,15 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
         InputStream::Unknown =>
             return Err(EncryptError::UnexpectedEnumVariant(
                     "Unknown InputStream not allowed here".to_owned())),
-        InputStream::Stdin => unimplemented!(), // TODO//Box::new(std::io::stdin()),
         InputStream::File(ref file) => Box::new(try!(File::open(file))),
-        InputStream::Reader(_) => unimplemented!(), // TODO
     };
 
     let out_stream:Box<SeekWrite> = match c.output_stream {
         OutputStream::Unknown =>
             return Err(EncryptError::UnexpectedEnumVariant(
                     "Unknown OutputStream not allowed here".to_owned())),
-        OutputStream::Stdout => unimplemented!(),// TODO: not sure I can support this, since I need to seek to write the hmac
         OutputStream::File(ref file) =>
             Box::new(try!(OpenOptions::new().read(true).write(true).create(true).open(file))),
-        OutputStream::Writer(_) => unimplemented!(), // TODO
     };
 
     // heap-alloc buffers
@@ -252,8 +248,6 @@ mod tests {
         let skip_long: i32 = env::var("SKIP_LONG").unwrap_or("0".to_owned()).parse().unwrap();
 
         let mut c = Config::new();
-        c.input_stream(InputStream::Stdin);
-        c.output_stream(OutputStream::Stdout);
 
         fn test_ct_combo(c: &mut Config,
                          logn: u8,
@@ -306,8 +300,6 @@ mod tests {
     #[test]
     fn get_pwkey_variants() {
         let mut c = Config::new();
-        c.input_stream(InputStream::Stdin);
-        c.output_stream(OutputStream::Stdout);
 
         let pwkey: PwKeyArray = [89; PW_KEY_SIZE];
         c.password(PasswordType::Data(pwkey));
@@ -331,8 +323,6 @@ mod tests {
         // test the various rnd modes.  since we can't really test that the output is
         // random, just make sure the functions return...something
         let mut c = Config::new();
-        c.input_stream(InputStream::Stdin);
-        c.output_stream(OutputStream::Stdout);
 
         c.initialization_vector(InitializationVector::GenerateFromRng);
         {
@@ -363,8 +353,6 @@ mod tests {
     #[test]
     fn get_iv_variants() {
         let mut c = Config::new();
-        c.input_stream(InputStream::Stdin);
-        c.output_stream(OutputStream::Stdout);
 
         let iv: IvArray = [89; IV_SIZE];
         c.initialization_vector(InitializationVector::Data(iv));

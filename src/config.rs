@@ -21,16 +21,12 @@ impl<T> SeekWrite for T where T: Seek + Write {}
 
 pub enum InputStream {
     Unknown,
-    Stdin,
     File(String),
-    Reader(Box<Seek>),
 }
 
 pub enum OutputStream {
     Unknown,
-    Stdout,
     File(String),
-    Writer(Box<Write>),
 }
 
 pub enum OutputFormat {
@@ -246,9 +242,9 @@ fn validate() {
     check!(c, ValidateError::ModeNotSet);
     c.decrypt();
     check!(c, ValidateError::InvalidInputStream);
-    c.input_stream(InputStream::Stdin);
+    c.input_stream(InputStream::File("/foo".to_owned()));
     check!(c, ValidateError::InvalidOutputStream);
-    c.output_stream(OutputStream::Stdout);
+    c.output_stream(OutputStream::File("/foo.out".to_owned()));
     check!(c, ValidateError::PasswordTypeIsUnknown);
 
     c.password(PasswordType::Cleartext("".to_owned(), default_scrypt_params()));

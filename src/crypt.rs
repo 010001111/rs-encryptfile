@@ -9,7 +9,9 @@ use self::crypto::mac::{Mac,MacResult};
 extern crate byteorder;
 use self::byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 
-use super::*;
+pub use super::EncryptError;
+pub use super::process as process;
+use config::*;
 
 use config;
 use crypto_util;
@@ -175,4 +177,178 @@ pub fn decrypt(state:EncryptState, mut in_stream:Box<SeekRead>, mut out_stream:B
     }
 
     Ok(())
+}
+
+// ===============================================================================================
+#[cfg(test)]
+mod tests {
+    // extern crate tempfile;
+    // use self::tempfile::TempFile;
+    use std::fs::{remove_file,File,OpenOptions};
+    use std::io::{Read,Write,Seek,SeekFrom};
+
+    extern crate tempdir;
+    use self::tempdir::TempDir;
+
+    use super::EncryptError;
+    use super::FileHeader;
+
+    use config::*;
+
+    fn write_test_file(dir:&TempDir, name:&str, contents:&str) -> String {
+        let tdp = dir.path().to_path_buf();
+        let mut fname = tdp.clone();
+        fname.push(name);
+        let fname = fname.to_str().unwrap();
+        let mut fstream = File::create(&fname).unwrap();
+        let _ = write!(fstream, "{}", contents);
+        fname.to_owned()
+    }
+
+    fn encrypt_file(td:&TempDir, in_name:&str, out_name: &str, pw:&str, contents:&str)
+        -> (Result<(), EncryptError>, String,String) {
+        let in_fname = write_test_file(&td, in_name, contents);
+        let out_fname = write_test_file(&td, out_name, "");
+        remove_file(&out_fname).unwrap();
+
+        let mut c = Config::new();
+        c.input_stream(InputStream::File(in_fname.to_owned()));
+        c.output_stream(OutputStream::File(out_fname.to_owned()));
+        c.initialization_vector(InitializationVector::GenerateFromRng);
+        c.password(PasswordType::Cleartext(pw.to_owned(), default_scrypt_params()));
+        c.encrypt();
+
+        let res = super::process(&c).map_err(|e| panic!("error encrypting: {:?}", e));
+
+        (res,in_fname,out_fname)
+    }
+
+    #[test]
+    fn crypt_basic() {
+        let td = TempDir::new("crypt_basic").unwrap();
+
+        let expected = "Hello World!";
+
+        let (res,_,out_fname) = encrypt_file(&td, "in_file", "out_file", "Swordfish", expected);
+        let _ = res.map_err(|e| panic!("error encrypting: {:?}", e));
+
+        let in_fname = out_fname;
+        let out_fname = write_test_file(&td, "out_file.dec", "");
+        remove_file(&out_fname).unwrap();
+
+        let mut c = Config::new();
+        c.password(PasswordType::Cleartext("Swordfish".to_owned(), default_scrypt_params()));
+        c.input_stream(InputStream::File(in_fname.to_owned()));
+        c.output_stream(OutputStream::File(out_fname.to_owned()));
+        c.decrypt();
+
+        let _ = super::process(&c).map_err(|e| panic!("error decrypting: {:?}", e));
+
+        let mut fout_stream = File::open(out_fname).unwrap();
+        let mut s = String::new();
+        fout_stream.read_to_string(&mut s).unwrap();
+        assert!(s == expected, format!("Expected '{}', got '{}'", expected, s));
+    }
+
+    #[test]
+    fn crypt_wrong_pw() {
+        let td = TempDir::new("crypt_wrong_pw").unwrap();
+        let (res,_,out_fname) = encrypt_file(&td, "in_file", "out_file", "Swordfish", "stuff");
+        let _ = res.map_err(|e| panic!("error encrypting: {:?}", e));
+
+        let in_fname = out_fname;
+        let out_fname = write_test_file(&td, "out_file.dec", "");
+        remove_file(&out_fname).unwrap();
+
+        let mut c = Config::new();
+        c.password(PasswordType::Cleartext("Clownfish".to_owned(), default_scrypt_params()));
+        c.input_stream(InputStream::File(in_fname.to_owned()));
+        c.output_stream(OutputStream::File(out_fname.to_owned()));
+        c.decrypt();
+        match super::process(&c) {
+            Err(EncryptError::CryptoError(_)) => (),
+            x => panic!("Unexpected result: {:?}", x)
+        }
+    }
+
+    #[test]
+    fn crypt_change_iv() {
+        let td = TempDir::new("crypt_change_iv").unwrap();
+        let (res,_,out_fname) = encrypt_file(&td, "in_file", "out_file", "Swordfish", "stuff");
+        let _ = res.map_err(|e| panic!("error encrypting: {:?}", e));
+
+        let mut fout_stream = OpenOptions::new().read(true).write(true).open(&out_fname).unwrap();
+        let mut header = FileHeader::read(&mut fout_stream).unwrap();
+        header.iv = [6;IV_SIZE];
+        fout_stream.seek(SeekFrom::Start(0)).unwrap();
+        header.write(&mut fout_stream).unwrap();
+        drop(fout_stream);
+
+        let in_fname = out_fname;
+        let out_fname = write_test_file(&td, "out_file.dec", "");
+        remove_file(&out_fname).unwrap();
+
+        let mut c = Config::new();
+        c.password(PasswordType::Cleartext("Swordfish".to_owned(), default_scrypt_params()));
+        c.input_stream(InputStream::File(in_fname.to_owned()));
+        c.output_stream(OutputStream::File(out_fname.to_owned()));
+        c.decrypt();
+        match super::process(&c) {
+            Err(EncryptError::CryptoError(_)) => (),
+            x => panic!("Unexpected result: {:?}", x)
+        }
+    }
+
+    #[test]
+    fn crypt_change_hmac() {
+        let td = TempDir::new("crypt_change_hmac").unwrap();
+        let (res,_,out_fname) = encrypt_file(&td, "in_file", "out_file", "Swordfish", "stuff");
+        let _ = res.map_err(|e| panic!("error encrypting: {:?}", e));
+
+        let mut fout_stream = OpenOptions::new().read(true).write(true).open(&out_fname).unwrap();
+        let _ = FileHeader::read(&mut fout_stream).unwrap();
+        write!(fout_stream,"badhmac").unwrap();
+        drop(fout_stream);
+
+        let in_fname = out_fname;
+        let out_fname = write_test_file(&td, "out_file.dec", "");
+        remove_file(&out_fname).unwrap();
+
+        let mut c = Config::new();
+        c.password(PasswordType::Cleartext("Swordfish".to_owned(), default_scrypt_params()));
+        c.input_stream(InputStream::File(in_fname.to_owned()));
+        c.output_stream(OutputStream::File(out_fname.to_owned()));
+        c.decrypt();
+        match super::process(&c) {
+            Err(EncryptError::HmacMismatch) => (),
+            x => panic!("Unexpected result: {:?}", x)
+        }
+    }
+
+    #[test]
+    fn crypt_change_data() {
+        let td = TempDir::new("crypt_change_data").unwrap();
+        let (res,_,out_fname) = encrypt_file(&td, "in_file", "out_file", "Swordfish", "stuff");
+        let _ = res.map_err(|e| panic!("error encrypting: {:?}", e));
+
+        let mut fout_stream = OpenOptions::new().read(true).write(true).open(&out_fname).unwrap();
+        fout_stream.seek(SeekFrom::End(-2)).unwrap();
+        let z:[u8;2] = [50;2];
+        fout_stream.write(&z).unwrap();
+        drop(fout_stream);
+
+        let in_fname = out_fname;
+        let out_fname = write_test_file(&td, "out_file.dec", "");
+        remove_file(&out_fname).unwrap();
+
+        let mut c = Config::new();
+        c.password(PasswordType::Cleartext("Swordfish".to_owned(), default_scrypt_params()));
+        c.input_stream(InputStream::File(in_fname.to_owned()));
+        c.output_stream(OutputStream::File(out_fname.to_owned()));
+        c.decrypt();
+        match super::process(&c) {
+            Err(EncryptError::CryptoError(_)) => (),
+            x => panic!("Unexpected result: {:?}", x)
+        }
+    }
 }

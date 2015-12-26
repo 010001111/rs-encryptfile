@@ -51,16 +51,6 @@ pub enum EncryptionMethod {
     AesCbc256,
 }
 
-pub enum LineEndingOnEncrypt {
-    Ignore,
-    ConvertToNewline,
-}
-
-pub enum LineEndingOnDecrypt {
-    Ignore,
-    ConvertToOs,
-}
-
 pub struct ScryptLogN(pub u8);
 pub struct ScryptR(pub u32);
 pub struct ScryptP(pub u32);
@@ -92,8 +82,6 @@ pub struct Config {
     pub input_stream: InputStream,
     pub output_stream: OutputStream,
     pub output_format: OutputFormat,
-    pub line_ending_encrypt: LineEndingOnEncrypt,
-    pub line_ending_decrypt: LineEndingOnDecrypt,
     pub rng_mode: RngMode,
     pub initialization_vector: InitializationVector,
     pub password: PasswordType,
@@ -119,8 +107,6 @@ impl Config {
             input_stream: InputStream::Unknown,
             output_stream: OutputStream::Unknown,
             output_format: OutputFormat::EncryptFile,
-            line_ending_encrypt: LineEndingOnEncrypt::Ignore,
-            line_ending_decrypt: LineEndingOnDecrypt::Ignore,
             rng_mode: RngMode::OsIssac,
             initialization_vector: InitializationVector::GenerateFromRng,
             password: PasswordType::Unknown,
@@ -145,14 +131,6 @@ impl Config {
     }
     pub fn output_stream(&mut self, os: OutputStream) -> &mut Self {
         self.output_stream = os;
-        self
-    }
-    pub fn line_ending_encrypt(&mut self, line_ending_encrypt: LineEndingOnEncrypt) -> &mut Self {
-        self.line_ending_encrypt = line_ending_encrypt;
-        self
-    }
-    pub fn line_ending_decrypt(&mut self, line_ending_decrypt: LineEndingOnDecrypt) -> &mut Self {
-        self.line_ending_decrypt = line_ending_decrypt;
         self
     }
     pub fn rng_mode(&mut self, rng_mode: RngMode) -> &mut Self {

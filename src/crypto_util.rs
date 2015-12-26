@@ -23,12 +23,6 @@ pub fn hmac_to_vec(hmac: &mut Hmac<Sha256>) -> Vec<u8> {
     hmac_raw
 }
 
-pub fn get_hmac(key: &[u8], data: &[u8]) -> Hmac<Sha256> {
-    let mut hmac = Hmac::new(Sha256::new(), &key);
-    hmac.input(data);
-    hmac
-}
-
 impl CryptoHelper {
     pub fn new(key:&[u8], iv:&[u8]) -> Self {
         let encryptor = aes::cbc_encryptor(

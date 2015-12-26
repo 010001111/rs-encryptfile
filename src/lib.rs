@@ -173,7 +173,6 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
     };
 
     let pwkey = try!(get_pw_key(c));
-    let iv = try!(get_iv(c)); // TODO: don't do this if decrypting
 
     // open streams
     let in_stream:Box<SeekRead> = match c.input_stream {
@@ -199,10 +198,10 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
     let mut read_buf: Vec<u8> = vec![0;c.buffer_size];
     let mut write_buf: Vec<u8> = vec![0;c.buffer_size];
 
-    let state = EncryptState {
+    let mut state = EncryptState {
         config: c,
         pwkey: pwkey,
-        iv: iv,
+        iv: [0; IV_SIZE],
         read_buf: &mut read_buf,
         write_buf: &mut write_buf,
     };
@@ -210,7 +209,11 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
     match c.mode {
         Mode::Unknown => return Err(EncryptError::UnexpectedEnumVariant(
                 "Unknown Mode not allowed here".to_owned())),
-        Mode::Encrypt => try!(encrypt(state,in_stream,out_stream)),
+        Mode::Encrypt => {
+            let iv = try!(get_iv(c));
+            state.iv = iv;
+            try!(encrypt(state,in_stream,out_stream))
+        },
         Mode::Decrypt => {
             if let OutputStream::File(ref fname) = c.output_stream {
                 // if decrypting to file, since we have to verify the hmac, don't write directly

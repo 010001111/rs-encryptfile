@@ -1,5 +1,5 @@
-use std::io::{Read,Write};
-use std::fs::{File,rename,OpenOptions};
+use std::io::{Read, Write};
+use std::fs::{File, rename, OpenOptions};
 
 extern crate rand;
 use self::rand::{Rng, OsRng, Isaac64Rng, SeedableRng};
@@ -9,15 +9,14 @@ use self::crypto::scrypt::{scrypt, ScryptParams};
 use self::crypto::symmetriccipher::SymmetricCipherError;
 
 pub use config::{Config, PW_KEY_SIZE, IV_SIZE, PwKeyArray, IvArray, ScryptR, ScryptP, ScryptLogN,
-    PasswordType, PasswordKeyGenMethod, InitializationVector, RngMode, InputStream,
-        Mode, OutputStream,SeekRead,SeekWrite, default_scrypt_params
-};
+                 PasswordType, PasswordKeyGenMethod, InitializationVector, RngMode, InputStream,
+                 Mode, OutputStream, SeekRead, SeekWrite, default_scrypt_params};
 
 mod config;
 mod crypto_util;
 mod crypt;
 
-use crypt::{encrypt,decrypt,TempFileRemover,EncryptState};
+use crypt::{encrypt, decrypt, TempFileRemover, EncryptState};
 
 extern crate byteorder;
 
@@ -32,7 +31,7 @@ pub enum EncryptError {
     ShortIvRead,
     ShortHmacRead,
     BadHeaderMagic,
-    UnexpectedVersion(u32,u32),
+    UnexpectedVersion(u32, u32),
     InvalidHmacLength,
     HmacMismatch,
     UnexpectedEnumVariant(String),
@@ -43,12 +42,12 @@ pub enum EncryptError {
 }
 
 impl From<std::io::Error> for EncryptError {
-    fn from(e:std::io::Error) -> Self {
+    fn from(e: std::io::Error) -> Self {
         EncryptError::IoError(e)
     }
 }
 impl From<byteorder::Error> for EncryptError {
-    fn from(e:byteorder::Error) -> Self {
+    fn from(e: byteorder::Error) -> Self {
         EncryptError::ByteOrderError(e)
     }
 }
@@ -174,19 +173,22 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
     let pwkey = try!(get_pw_key(c));
 
     // open streams
-    let in_stream:Box<SeekRead> = match c.input_stream {
-        InputStream::Unknown =>
-            return Err(EncryptError::UnexpectedEnumVariant(
-                    "Unknown InputStream not allowed here".to_owned())),
+    let in_stream: Box<SeekRead> = match c.input_stream {
+        InputStream::Unknown => {
+            return Err(EncryptError::UnexpectedEnumVariant("Unknown InputStream not allowed here"
+                                                               .to_owned()))
+        }
         InputStream::File(ref file) => Box::new(try!(File::open(file))),
     };
 
-    let out_stream:Box<SeekWrite> = match c.output_stream {
-        OutputStream::Unknown =>
-            return Err(EncryptError::UnexpectedEnumVariant(
-                    "Unknown OutputStream not allowed here".to_owned())),
-        OutputStream::File(ref file) =>
-            Box::new(try!(OpenOptions::new().read(true).write(true).create(true).open(file))),
+    let out_stream: Box<SeekWrite> = match c.output_stream {
+        OutputStream::Unknown => {
+            return Err(EncryptError::UnexpectedEnumVariant("Unknown OutputStream not allowed here"
+                                                               .to_owned()))
+        }
+        OutputStream::File(ref file) => {
+            Box::new(try!(OpenOptions::new().read(true).write(true).create(true).open(file)))
+        }
     };
 
     // heap-alloc buffers
@@ -202,13 +204,15 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
     };
 
     match c.mode {
-        Mode::Unknown => return Err(EncryptError::UnexpectedEnumVariant(
-                "Unknown Mode not allowed here".to_owned())),
+        Mode::Unknown => {
+            return Err(EncryptError::UnexpectedEnumVariant("Unknown Mode not allowed here"
+                                                               .to_owned()))
+        }
         Mode::Encrypt => {
             let iv = try!(get_iv(c));
             state.iv = iv;
-            try!(encrypt(state,in_stream,out_stream))
-        },
+            try!(encrypt(state, in_stream, out_stream))
+        }
         Mode::Decrypt => {
             if let OutputStream::File(ref fname) = c.output_stream {
                 // if decrypting to file, since we have to verify the hmac, don't write directly
@@ -226,7 +230,7 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
             } else {
                 try!(decrypt(state, in_stream, out_stream))
             }
-        },
+        }
     }
 
     Ok(())

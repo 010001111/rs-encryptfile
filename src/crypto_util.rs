@@ -1,8 +1,8 @@
 use std::iter::repeat;
 
 extern crate crypto;
-use self::crypto::{ symmetriccipher, buffer, aes, blockmodes };
-use self::crypto::buffer::{ ReadBuffer, WriteBuffer, BufferResult };
+use self::crypto::{symmetriccipher, buffer, aes, blockmodes};
+use self::crypto::buffer::{ReadBuffer, WriteBuffer, BufferResult};
 use self::crypto::sha2::Sha256;
 use self::crypto::hmac::Hmac;
 use self::crypto::mac::Mac;
@@ -24,17 +24,15 @@ pub fn hmac_to_vec(hmac: &mut Hmac<Sha256>) -> Vec<u8> {
 }
 
 impl CryptoHelper {
-    pub fn new(key:&[u8], iv:&[u8]) -> Self {
-        let encryptor = aes::cbc_encryptor(
-                aes::KeySize::KeySize256,
-                key,
-                iv,
-                blockmodes::PkcsPadding);
-        let decryptor = aes::cbc_decryptor(
-                aes::KeySize::KeySize256,
-                key,
-                iv,
-                blockmodes::PkcsPadding);
+    pub fn new(key: &[u8], iv: &[u8]) -> Self {
+        let encryptor = aes::cbc_encryptor(aes::KeySize::KeySize256,
+                                           key,
+                                           iv,
+                                           blockmodes::PkcsPadding);
+        let decryptor = aes::cbc_decryptor(aes::KeySize::KeySize256,
+                                           key,
+                                           iv,
+                                           blockmodes::PkcsPadding);
         CryptoHelper {
             encryptor: encryptor,
             decryptor: decryptor,
@@ -45,7 +43,10 @@ impl CryptoHelper {
         }
     }
 
-    pub fn encrypt(&mut self, data: &[u8], is_all_data:bool) -> Result<Vec<u8>, symmetriccipher::SymmetricCipherError> {
+    pub fn encrypt(&mut self,
+                   data: &[u8],
+                   is_all_data: bool)
+                   -> Result<Vec<u8>, symmetriccipher::SymmetricCipherError> {
         if self.got_eof_on_encrypt {
             panic!("Already received encryption eof, can't encrypt anymore; reinit crypto helper"); // TODO: remove this panic
         }
@@ -59,13 +60,14 @@ impl CryptoHelper {
         let mut write_buffer = buffer::RefWriteBuffer::new(&mut buffer);
 
         loop {
-            let result = try!(self.encryptor.encrypt(&mut read_buffer, &mut write_buffer, is_all_data));
+            let result = try!(self.encryptor
+                                  .encrypt(&mut read_buffer, &mut write_buffer, is_all_data));
 
             final_result.extend(write_buffer.take_read_buffer().take_remaining().iter().cloned());
 
             match result {
                 BufferResult::BufferUnderflow => break,
-                BufferResult::BufferOverflow => { }
+                BufferResult::BufferOverflow => {}
             }
         }
 
@@ -74,7 +76,10 @@ impl CryptoHelper {
         Ok(final_result)
     }
 
-    pub fn decrypt(&mut self, encrypted_data: &[u8], is_all_data:bool) -> Result<Vec<u8>, symmetriccipher::SymmetricCipherError> {
+    pub fn decrypt(&mut self,
+                   encrypted_data: &[u8],
+                   is_all_data: bool)
+                   -> Result<Vec<u8>, symmetriccipher::SymmetricCipherError> {
         if self.got_eof_on_decrypt {
             panic!("Already received decryption eof, can't decrypt anymore; reinit crypto helper"); // TODO: remove this panic
         }
@@ -90,11 +95,12 @@ impl CryptoHelper {
         let mut write_buffer = buffer::RefWriteBuffer::new(&mut buffer);
 
         loop {
-            let result = try!(self.decryptor.decrypt(&mut read_buffer, &mut write_buffer, is_all_data));
+            let result = try!(self.decryptor
+                                  .decrypt(&mut read_buffer, &mut write_buffer, is_all_data));
             final_result.extend(write_buffer.take_read_buffer().take_remaining().iter().cloned());
             match result {
                 BufferResult::BufferUnderflow => break,
-                BufferResult::BufferOverflow => { }
+                BufferResult::BufferOverflow => {}
             }
         }
 

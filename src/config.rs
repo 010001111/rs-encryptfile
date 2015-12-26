@@ -10,14 +10,16 @@ pub type IvArray = [u8; IV_SIZE];
 pub enum Mode {
     Unknown,
     Encrypt,
-    Decrypt
+    Decrypt,
 }
 
 pub trait SeekRead: Seek + Read {}
-impl<T> SeekRead for T where T: Seek + Read {}
+impl<T> SeekRead for T where T: Seek + Read
+{}
 
 pub trait SeekWrite: Seek + Write {}
-impl<T> SeekWrite for T where T: Seek + Write {}
+impl<T> SeekWrite for T where T: Seek + Write
+{}
 
 pub enum InputStream {
     Unknown,

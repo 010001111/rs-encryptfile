@@ -96,8 +96,8 @@ pub fn slice_is_zeroed(d: &[u8]) -> bool {
 }
 
 pub fn default_scrypt_params() -> PasswordKeyGenMethod {
-    // TODO: check these
-    PasswordKeyGenMethod::Scrypt(ScryptLogN(4), ScryptR(4), ScryptP(4))
+    // http://stackoverflow.com/questions/11126315/what-are-optimal-scrypt-work-factors
+    PasswordKeyGenMethod::Scrypt(ScryptLogN(16), ScryptR(8), ScryptP(1))
 }
 
 impl Config {

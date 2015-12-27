@@ -1,3 +1,65 @@
+//! This library provides a interface to Rust Crypto([1]) for encrypting and decrypting files.
+//! It provides the following features:
+
+//! 1. A high-level configuration interface to specify various options
+//! 2. Generation and verification of HMACs([2]) for the encrypted data.
+//! 3. In the future, support for different encryption methods or output formats.
+//!
+//! This library is [on GitHub](https://github.com/jmquigs/rs-encryptfile).
+//!
+//! ## Example
+//!
+//!
+//! ```rust
+//! use encryptfile as ef;
+//!
+//! // Encrypt
+//! let mut in_file = std::env::var("HOME").unwrap();
+//! in_file.push_str("/.bash_history");
+//! let mut c = ef::Config::new();
+//! c.input_stream(ef::InputStream::File(in_file.to_owned()))
+//!  .output_stream(ef::OutputStream::File("/tmp/__encrypted_bash_history.ef".to_owned(),
+//!     ef::FileOptions::AllowOverwrite))
+//!  .initialization_vector(ef::InitializationVector::GenerateFromRng)
+//!  .password(ef::PasswordType::Text("iloveyou".to_owned(), ef::default_scrypt_params()))
+//!  .encrypt();
+//! let _ = ef::process(&c).map_err(|e| panic!("error encrypting: {:?}", e));
+//!
+//! // Decrypt
+//! let mut c = ef::Config::new();
+//! c.input_stream(ef::InputStream::File("/tmp/__encrypted_bash_history.ef".to_owned()))
+//!  .output_stream(ef::OutputStream::File("/tmp/__encrypted_bash_history.txt".to_owned(),
+//!     ef::FileOptions::AllowOverwrite))
+//!  .password(ef::PasswordType::Text("iloveyou".to_owned(), ef::default_scrypt_params()))
+//!  .decrypt();
+//! let _ = ef::process(&c).map_err(|e| panic!("error decrypting: {:?}", e));
+//! ```
+//! [1]: https://github.com/DaGenix/rust-crypto
+//! [2]: https://en.wikipedia.org/wiki/Hash-based_message_authentication_code
+//!
+//!
+//!
+//!
+//!
+//!
+//!
+//!
+//!
+//!
+//!
+//!
+//!
+//!
+//!
+//!
+//!
+//!
+//!
+//!
+//!
+//!
+//!
+
 //#![feature(plugin)]
 //#![plugin(clippy)]
 
@@ -13,7 +75,7 @@ use self::crypto::scrypt::{scrypt, ScryptParams};
 
 pub use config::{Config, PW_KEY_SIZE, IV_SIZE, PwKeyArray, IvArray, ScryptR, ScryptP, ScryptLogN,
                  PasswordType, PasswordKeyGenMethod, InitializationVector, RngMode, InputStream,
-                 Mode, OutputStream, SeekRead, SeekWrite, default_scrypt_params};
+                 Mode, OutputStream, SeekRead, SeekWrite, default_scrypt_params, FileOptions};
 
 mod config;
 mod crypto_util;
@@ -132,7 +194,7 @@ fn get_pw_key(c: &Config) -> Result<PwKeyArray, EncryptError> {
             Err(EncryptError::UnexpectedEnumVariant("Password type unknown not allowed here"
                                                         .to_owned()))
         }
-        PasswordType::Cleartext(ref pw, PasswordKeyGenMethod::Scrypt(ref logn, ref r, ref p)) => {
+        PasswordType::Text(ref pw, PasswordKeyGenMethod::Scrypt(ref logn, ref r, ref p)) => {
             Ok(make_scrypt_key(pw, &c.salt, logn, r, p))
         }
         PasswordType::Data(d) => Ok(d),
@@ -173,8 +235,6 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
         Ok(_) => (),
     };
 
-    let pwkey = try!(get_pw_key(c));
-
     // open streams
     let in_stream: Box<SeekRead> = match c.input_stream {
         InputStream::Unknown => {
@@ -189,11 +249,14 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
             return Err(EncryptError::UnexpectedEnumVariant("Unknown OutputStream not allowed here"
                                                                .to_owned()))
         }
-        OutputStream::File(ref file,allow_overwrite) => {
-            if !allow_overwrite {
-                let pb = PathBuf::from(file);
-                if pb.is_file() || pb.is_dir() {
-                    return Err(EncryptError::OutputFileExists);
+        OutputStream::File(ref file,ref options) => {
+            match *options {
+                FileOptions::AllowOverwrite => (),
+                _ => {
+                    let pb = PathBuf::from(file);
+                    if pb.is_file() || pb.is_dir() {
+                        return Err(EncryptError::OutputFileExists);
+                    }
                 }
             }
             Box::new(try!(OpenOptions::new().read(true).write(true).create(true).open(file)))
@@ -203,6 +266,8 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
     // heap-alloc buffers
     let mut read_buf: Vec<u8> = vec![0;c.buffer_size];
     let mut write_buf: Vec<u8> = vec![0;c.buffer_size];
+
+    let pwkey = try!(get_pw_key(c));
 
     let mut state = EncryptState {
         config: c,
@@ -269,7 +334,7 @@ mod tests {
                          salt: &str,
                          ex: PwKeyArray) {
             c.salt(salt.to_owned());
-            c.password(PasswordType::Cleartext(pw.to_owned(),
+            c.password(PasswordType::Text(pw.to_owned(),
                                                PasswordKeyGenMethod::Scrypt(ScryptLogN(logn),
                                                                             ScryptR(r),
                                                                             ScryptP(p))));

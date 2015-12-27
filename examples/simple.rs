@@ -3,6 +3,7 @@ use std::env;
 use std::path::PathBuf;
 
 extern crate encryptfile;
+use encryptfile as ef;
 
 fn main() {
     let args: Vec<_> = env::args().collect();
@@ -19,29 +20,29 @@ fn main() {
     }
     println!("Mode: {}", &in_mode);
 
-    let mut c = encryptfile::Config::new();
+    let mut c = ef::Config::new();
     c.buffer_size(1048576*1)
-        .password(encryptfile::PasswordType::Cleartext("swordfish".to_owned(),
-            encryptfile::default_scrypt_params()))
-        .input_stream(encryptfile::InputStream::File(in_file.to_owned()));
+        .password(ef::PasswordType::Text("swordfish".to_owned(),
+            ef::default_scrypt_params()))
+        .input_stream(ef::InputStream::File(in_file.to_owned()));
 
     match in_mode.as_ref() {
         "encrypt" => {
             let mut out_file = PathBuf::from(&in_file).file_name().unwrap().to_str().unwrap().to_owned();
             out_file.push_str(".enc");
-            c.output_stream(encryptfile::OutputStream::File(out_file.to_owned(),false));
+            c.output_stream(ef::OutputStream::File(out_file.to_owned(),ef::FileOptions::None));
             c.encrypt();
         },
         "decrypt" => {
             let out_file = PathBuf::from(&in_file).file_name().unwrap().to_str().unwrap().to_owned();
             let out_file = out_file.replace(".enc", "");
-            c.output_stream(encryptfile::OutputStream::File(out_file.to_owned(),false));
+            c.output_stream(ef::OutputStream::File(out_file.to_owned(),ef::FileOptions::None));
             c.decrypt();
         },
         _ => panic!("unsupported mode: {}", in_mode)
     }
 
-    match encryptfile::process(&c) {
+    match ef::process(&c) {
         Err(e) => panic!("Error: {:?}", e),
         Ok(_) => println!("Done")
     }

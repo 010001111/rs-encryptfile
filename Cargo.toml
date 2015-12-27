@@ -9,5 +9,8 @@ rand = "^0.3.12"
 byteorder = "^0.4"
 #clippy = "*"
 
+[lib]
+name = "encryptfile"
+
 [dev-dependencies]
 tempdir = "^0.3.4"

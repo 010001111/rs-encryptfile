@@ -88,7 +88,6 @@ pub struct Config {
     pub salt: String,
     pub encryption_method: EncryptionMethod,
     pub buffer_size: usize,
-    pub remove_input_after_encrypt: bool,
 }
 
 pub fn slice_is_zeroed(d: &[u8]) -> bool {
@@ -119,7 +118,6 @@ impl Config {
             salt: "DefaultSalt".to_owned(),
             encryption_method: EncryptionMethod::AesCbc256,
             buffer_size: 65536,
-            remove_input_after_encrypt: false,
         }
     }
 
@@ -163,10 +161,6 @@ impl Config {
     }
     pub fn buffer_size(&mut self, buffer_size: usize) -> &mut Self {
         self.buffer_size = buffer_size;
-        self
-    }
-    pub fn remove_input_after_encrypt(&mut self, remove_input_after_encrypt: bool) -> &mut Self {
-        self.remove_input_after_encrypt = remove_input_after_encrypt;
         self
     }
     pub fn validate(&self) -> Result<(), ValidateError> {

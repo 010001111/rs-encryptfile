@@ -3,6 +3,7 @@
 
 use std::io::{Read, Write};
 use std::fs::{File, rename, OpenOptions};
+use std::path::PathBuf;
 
 extern crate rand;
 use self::rand::{Rng, OsRng, Isaac64Rng, SeedableRng};
@@ -27,6 +28,7 @@ extern crate byteorder;
 pub enum EncryptError {
     ValidateFailed(config::ValidateError),
     OsRngFailed(std::io::Error),
+    OutputFileExists,
     PwKeyIsZeroed,
     IvIsZeroed,
     IvEqualsCheckValue,
@@ -188,7 +190,13 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
             return Err(EncryptError::UnexpectedEnumVariant("Unknown OutputStream not allowed here"
                                                                .to_owned()))
         }
-        OutputStream::File(ref file) => {
+        OutputStream::File(ref file,allow_overwrite) => {
+            if !allow_overwrite {
+                let pb = PathBuf::from(file);
+                if pb.is_file() || pb.is_dir() {
+                    return Err(EncryptError::OutputFileExists);
+                }
+            }
             Box::new(try!(OpenOptions::new().read(true).write(true).create(true).open(file)))
         }
     };
@@ -216,7 +224,7 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
             try!(encrypt(state, in_stream, out_stream))
         }
         Mode::Decrypt => {
-            if let OutputStream::File(ref fname) = c.output_stream {
+            if let OutputStream::File(ref fname, _) = c.output_stream {
                 // if decrypting to file, since we have to verify the hmac, don't write directly
                 // to the target.  write to a temporary
                 // file, then move it over the target path if the decryption & hmac check succeed.

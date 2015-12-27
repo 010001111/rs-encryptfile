@@ -28,7 +28,7 @@ pub enum InputStream {
 
 pub enum OutputStream {
     Unknown,
-    File(String),
+    File(String,bool),
 }
 
 pub enum OutputFormat {
@@ -77,7 +77,6 @@ pub enum ValidateError {
     BufferTooSmall,
 }
 
-// TODO: add option to specify whether output file should be overwritten if it exists
 pub struct Config {
     pub mode: Mode,
     pub input_stream: InputStream,
@@ -229,7 +228,7 @@ fn validate() {
     check!(c, ValidateError::InvalidInputStream);
     c.input_stream(InputStream::File("/foo".to_owned()));
     check!(c, ValidateError::InvalidOutputStream);
-    c.output_stream(OutputStream::File("/foo.out".to_owned()));
+    c.output_stream(OutputStream::File("/foo.out".to_owned(), true));
     check!(c, ValidateError::PasswordTypeIsUnknown);
 
     c.password(PasswordType::Cleartext("".to_owned(), default_scrypt_params()));

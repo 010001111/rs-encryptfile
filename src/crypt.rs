@@ -223,7 +223,7 @@ mod tests {
 
         let mut c = Config::new();
         c.input_stream(InputStream::File(in_fname.to_owned()));
-        c.output_stream(OutputStream::File(out_fname.to_owned()));
+        c.output_stream(OutputStream::File(out_fname.to_owned(), true));
         c.initialization_vector(InitializationVector::GenerateFromRng);
         c.password(PasswordType::Cleartext(pw.to_owned(), default_scrypt_params()));
         c.encrypt();
@@ -249,7 +249,7 @@ mod tests {
         let mut c = Config::new();
         c.password(PasswordType::Cleartext("Swordfish".to_owned(), default_scrypt_params()));
         c.input_stream(InputStream::File(in_fname.to_owned()));
-        c.output_stream(OutputStream::File(out_fname.to_owned()));
+        c.output_stream(OutputStream::File(out_fname.to_owned(), true));
         c.decrypt();
 
         let _ = super::process(&c).map_err(|e| panic!("error decrypting: {:?}", e));
@@ -274,7 +274,7 @@ mod tests {
         let mut c = Config::new();
         c.password(PasswordType::Cleartext("Clownfish".to_owned(), default_scrypt_params()));
         c.input_stream(InputStream::File(in_fname.to_owned()));
-        c.output_stream(OutputStream::File(out_fname.to_owned()));
+        c.output_stream(OutputStream::File(out_fname.to_owned(), true));
         c.decrypt();
         match super::process(&c) {
             Err(EncryptError::CryptoError(_)) => (),
@@ -302,7 +302,7 @@ mod tests {
         let mut c = Config::new();
         c.password(PasswordType::Cleartext("Swordfish".to_owned(), default_scrypt_params()));
         c.input_stream(InputStream::File(in_fname.to_owned()));
-        c.output_stream(OutputStream::File(out_fname.to_owned()));
+        c.output_stream(OutputStream::File(out_fname.to_owned(), true));
         c.decrypt();
         match super::process(&c) {
             Err(EncryptError::CryptoError(_)) => (),
@@ -328,7 +328,7 @@ mod tests {
         let mut c = Config::new();
         c.password(PasswordType::Cleartext("Swordfish".to_owned(), default_scrypt_params()));
         c.input_stream(InputStream::File(in_fname.to_owned()));
-        c.output_stream(OutputStream::File(out_fname.to_owned()));
+        c.output_stream(OutputStream::File(out_fname.to_owned(),true));
         c.decrypt();
         match super::process(&c) {
             Err(EncryptError::HmacMismatch) => (),
@@ -355,10 +355,36 @@ mod tests {
         let mut c = Config::new();
         c.password(PasswordType::Cleartext("Swordfish".to_owned(), default_scrypt_params()));
         c.input_stream(InputStream::File(in_fname.to_owned()));
-        c.output_stream(OutputStream::File(out_fname.to_owned()));
+        c.output_stream(OutputStream::File(out_fname.to_owned(),true));
         c.decrypt();
         match super::process(&c) {
             Err(EncryptError::CryptoError(_)) => (),
+            x => panic!("Unexpected result: {:?}", x),
+        }
+    }
+
+    #[test]
+    fn crypt_overwrite() {
+        let td = TempDir::new("crypt_overwrite").unwrap();
+
+        let in_fname = write_test_file(&td, "in_name", "");
+        let out_fname = write_test_file(&td, "out_name", "");
+
+        let mut c = Config::new();
+        c.input_stream(InputStream::File(in_fname.to_owned()));
+        c.output_stream(OutputStream::File(out_fname.to_owned(), false));
+        c.initialization_vector(InitializationVector::GenerateFromRng);
+        c.password(PasswordType::Cleartext("Booger".to_owned(), default_scrypt_params()));
+        c.encrypt();
+
+        match super::process(&c) {
+            Err(EncryptError::OutputFileExists) => (),
+            x => panic!("Unexpected result: {:?}", x),
+        }
+
+        c.output_stream(OutputStream::File(out_fname.to_owned(), true));
+        match super::process(&c) {
+            Ok(_) => (),
             x => panic!("Unexpected result: {:?}", x),
         }
     }

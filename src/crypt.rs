@@ -101,7 +101,7 @@ pub fn encrypt(state: EncryptState,
                mut in_stream: Box<SeekRead>,
                mut out_stream: Box<SeekWrite>)
                -> Result<(), EncryptError> {
-    let mut crypto = crypto_util::CryptoHelper::new(&state.pwkey, &state.iv);
+    let mut crypto = crypto_util::CryptoHelper::new(&state.pwkey, &state.iv, true);
     let mut buf = state.read_buf;
 
     // reserve space for header + hmac
@@ -124,7 +124,7 @@ pub fn encrypt(state: EncryptState,
         }
     }
 
-    let hmac = crypto_util::hmac_to_vec(&mut crypto.encrypt_hmac);
+    let hmac = crypto_util::hmac_to_vec(&mut crypto.hmac);
     if hmac.len() + header_size >= header_capacity {
         return Err(EncryptError::HeaderTooSmall);
     }
@@ -149,14 +149,14 @@ pub fn decrypt(state: EncryptState,
     let mut buf = state.read_buf;
     let header = try!(FileHeader::read(&mut in_stream));
 
-    // TODO: use read_exact when stable
+    // TODO: use read_exact when it is stable
     let hmac_len = header.hmac_len as usize;
     let mut hmac_bytes: Vec<u8> = vec![0;hmac_len];
     let nread = try!(in_stream.read(&mut hmac_bytes));
     if nread != hmac_len {
         return Err(EncryptError::ShortHmacRead);
     }
-    let mut crypto = crypto_util::CryptoHelper::new(&state.pwkey, &header.iv);
+    let mut crypto = crypto_util::CryptoHelper::new(&state.pwkey, &header.iv, false);
     // seek to data pos
     let header_size = mem::size_of::<FileHeader>();
     let header_capacity = header_size + HEADER_RESERVED;
@@ -176,7 +176,7 @@ pub fn decrypt(state: EncryptState,
         }
     }
 
-    let mut computed_hmac = crypto.decrypt_hmac;
+    let mut computed_hmac = crypto.hmac;
     let expected_hmac = MacResult::new(&hmac_bytes);
     if computed_hmac.result() != expected_hmac {
         return Err(EncryptError::HmacMismatch);

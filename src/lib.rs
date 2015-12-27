@@ -10,7 +10,6 @@ use self::rand::{Rng, OsRng, Isaac64Rng, SeedableRng};
 
 extern crate crypto;
 use self::crypto::scrypt::{scrypt, ScryptParams};
-use self::crypto::symmetriccipher::SymmetricCipherError;
 
 pub use config::{Config, PW_KEY_SIZE, IV_SIZE, PwKeyArray, IvArray, ScryptR, ScryptP, ScryptLogN,
                  PasswordType, PasswordKeyGenMethod, InitializationVector, RngMode, InputStream,
@@ -42,7 +41,7 @@ pub enum EncryptError {
     UnexpectedEnumVariant(String),
     ByteOrderError(byteorder::Error),
     IoError(std::io::Error),
-    CryptoError(SymmetricCipherError),
+    CryptoError(crypto_util::CryptoError),
     InternalError,
 }
 

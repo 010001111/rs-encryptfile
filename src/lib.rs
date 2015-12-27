@@ -1,9 +1,15 @@
-//! This library provides a interface to Rust Crypto([1]) for encrypting and decrypting files.
+//! This library provides an interface to Rust Crypto([1]) for encrypting and decrypting files.
 //! It provides the following features:
-
+//!
 //! 1. A high-level configuration interface to specify various options
+//!
 //! 2. Generation and verification of HMACs([2]) for the encrypted data.
-//! 3. In the future, support for different encryption methods or output formats.
+//!
+//! In the future, this library may provide:
+//!
+//! 1. Support for different encryption methods or output formats.
+//!
+//! 2. Support for encryption libraries other than rust crypto
 //!
 //! This library is [on GitHub](https://github.com/jmquigs/rs-encryptfile).
 //!

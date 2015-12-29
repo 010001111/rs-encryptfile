@@ -24,8 +24,8 @@
 //! in_file.push_str("/.bash_history");
 //! let mut c = ef::Config::new();
 //! c.input_stream(ef::InputStream::File(in_file.to_owned()))
-//!  .output_stream(ef::OutputStream::File("/tmp/__encrypted_bash_history.ef".to_owned(),
-//!     ef::FileOptions::AllowOverwrite))
+//!  .output_stream(ef::OutputStream::File("/tmp/__encrypted_bash_history.ef".to_owned()))
+//!  .add_output_option(ef::OutputOption::AllowOverwrite)
 //!  .initialization_vector(ef::InitializationVector::GenerateFromRng)
 //!  .password(ef::PasswordType::Text("iloveyou".to_owned(), ef::default_scrypt_params()))
 //!  .encrypt();
@@ -34,8 +34,8 @@
 //! // Decrypt
 //! let mut c = ef::Config::new();
 //! c.input_stream(ef::InputStream::File("/tmp/__encrypted_bash_history.ef".to_owned()))
-//!  .output_stream(ef::OutputStream::File("/tmp/__encrypted_bash_history.txt".to_owned(),
-//!     ef::FileOptions::AllowOverwrite))
+//!  .output_stream(ef::OutputStream::File("/tmp/__encrypted_bash_history.txt".to_owned()))
+//!  .add_output_option(ef::OutputOption::AllowOverwrite)
 //!  .password(ef::PasswordType::Text("iloveyou".to_owned(), ef::default_scrypt_params()))
 //!  .decrypt();
 //! let _ = ef::process(&c).map_err(|e| panic!("error decrypting: {:?}", e));
@@ -81,7 +81,7 @@ use self::crypto::scrypt::{scrypt, ScryptParams};
 
 pub use config::{Config, PW_KEY_SIZE, IV_SIZE, PwKeyArray, IvArray, ScryptR, ScryptP, ScryptLogN,
                  PasswordType, PasswordKeyGenMethod, InitializationVector, RngMode, InputStream,
-                 Mode, OutputStream, SeekRead, SeekWrite, default_scrypt_params, FileOptions};
+                 Mode, OutputStream, SeekRead, SeekWrite, default_scrypt_params, OutputOption};
 
 mod config;
 mod crypto_util;
@@ -270,14 +270,11 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
             return Err(EncryptError::UnexpectedEnumVariant("Unknown OutputStream not allowed here"
                                                                .to_owned()))
         }
-        OutputStream::File(ref file,ref options) => {
-            match *options {
-                FileOptions::AllowOverwrite => (),
-                _ => {
-                    let pb = PathBuf::from(file);
-                    if pb.is_file() || pb.is_dir() {
-                        return Err(EncryptError::OutputFileExists);
-                    }
+        OutputStream::File(ref file) => {
+            if !c.get_output_options().contains(&OutputOption::AllowOverwrite) {
+                let pb = PathBuf::from(file);
+                if pb.is_file() || pb.is_dir() {
+                    return Err(EncryptError::OutputFileExists);
                 }
             }
             Box::new(try!(OpenOptions::new().read(true).write(true).create(true).open(file)))
@@ -312,7 +309,7 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
             try!(encrypt(state, in_stream, out_stream))
         }
         Mode::Decrypt => {
-            if let OutputStream::File(ref fname, _) = *c.get_output_stream() {
+            if let OutputStream::File(ref fname) = *c.get_output_stream() {
                 // if decrypting to file, since we have to verify the hmac, don't write directly
                 // to the target.  write to a temporary
                 // file, then move it over the target path if the decryption & hmac check succeed.

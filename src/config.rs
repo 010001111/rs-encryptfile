@@ -1,4 +1,5 @@
 use std::io::{Read, Write, Seek};
+use std::collections::HashSet;
 
 pub const PW_KEY_SIZE: usize = 64;
 pub const IV_SIZE: usize = 16;
@@ -22,12 +23,11 @@ pub trait SeekWrite: Seek + Write {}
 impl<T> SeekWrite for T where T: Seek + Write
 {}
 
-/// Configuration options for file handling.
-pub enum FileOptions {
-    None,
+#[derive(PartialEq,Eq,Hash)]
+pub enum OutputOption {
     /// If an output file exists and this is set, it will be overwritten.  If this is NOT set
     /// and the file exists, encryption/decryption will return an error.
-    AllowOverwrite
+    AllowOverwrite,
 }
 
 /// Data input streams.
@@ -40,8 +40,8 @@ pub enum InputStream {
 /// Data output streams.
 pub enum OutputStream {
     Unknown,
-    /// Write to the specified file with the specified options.
-    File(String,FileOptions),
+    /// Write to the specified file.
+    File(String),
 }
 
 /// Output format.
@@ -134,6 +134,7 @@ pub struct Config {
     input_stream: InputStream,
     output_stream: OutputStream,
     output_format: OutputFormat,
+    output_options: HashSet<OutputOption>,
     rng_mode: RngMode,
     initialization_vector: InitializationVector,
     password: PasswordType,
@@ -176,6 +177,7 @@ impl Config {
             input_stream: InputStream::Unknown,
             output_stream: OutputStream::Unknown,
             output_format: OutputFormat::EncryptFile,
+            output_options: HashSet::new(),
             rng_mode: RngMode::OsIssac,
             initialization_vector: InitializationVector::GenerateFromRng,
             password: PasswordType::Unknown,
@@ -203,6 +205,16 @@ impl Config {
     /// Set the output stream.
     pub fn output_stream(&mut self, os: OutputStream) -> &mut Self {
         self.output_stream = os;
+        self
+    }
+    /// Set output options.
+    pub fn output_options(&mut self, opts:HashSet<OutputOption>) -> &mut Self {
+        self.output_options = opts;
+        self
+    }
+    /// Add an output option.
+    pub fn add_output_option(&mut self, opt:OutputOption) -> &mut Self {
+        self.output_options.insert(opt);
         self
     }
     /// Set the random number mode.  See the `RngMode` enum for information
@@ -279,6 +291,9 @@ impl Config {
     pub fn get_output_format(&self) -> &OutputFormat {
         return &self.output_format;
     }
+    pub fn get_output_options(&self) -> &HashSet<OutputOption> {
+        return &self.output_options;
+    }
     pub fn get_rng_mode(&self) -> &RngMode {
         return &self.rng_mode;
     }
@@ -325,7 +340,7 @@ fn validate() {
     check!(c, ValidateError::InvalidInputStream);
     c.input_stream(InputStream::File("/foo".to_owned()));
     check!(c, ValidateError::InvalidOutputStream);
-    c.output_stream(OutputStream::File("/foo.out".to_owned(), FileOptions::None));
+    c.output_stream(OutputStream::File("/foo.out".to_owned()));
     check!(c, ValidateError::PasswordTypeIsUnknown);
 
     c.password(PasswordType::Text("".to_owned(), default_scrypt_params()));

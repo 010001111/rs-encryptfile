@@ -30,13 +30,13 @@ fn main() {
         "encrypt" => {
             let mut out_file = PathBuf::from(&in_file).file_name().unwrap().to_str().unwrap().to_owned();
             out_file.push_str(".enc");
-            c.output_stream(ef::OutputStream::File(out_file.to_owned(),ef::FileOptions::None));
+            c.output_stream(ef::OutputStream::File(out_file.to_owned()));
             c.encrypt();
         },
         "decrypt" => {
             let out_file = PathBuf::from(&in_file).file_name().unwrap().to_str().unwrap().to_owned();
             let out_file = out_file.replace(".enc", "");
-            c.output_stream(ef::OutputStream::File(out_file.to_owned(),ef::FileOptions::None));
+            c.output_stream(ef::OutputStream::File(out_file.to_owned()));
             c.decrypt();
         },
         _ => panic!("unsupported mode: {}", in_mode)

@@ -7,6 +7,7 @@ pub type PwKeyArray = [u8; PW_KEY_SIZE];
 
 pub type IvArray = [u8; IV_SIZE];
 
+/// The current encryption mode.  Initially set to Unknown.
 pub enum Mode {
     Unknown,
     Encrypt,
@@ -21,54 +22,94 @@ pub trait SeekWrite: Seek + Write {}
 impl<T> SeekWrite for T where T: Seek + Write
 {}
 
-
+/// Configuration options for file handling.
 pub enum FileOptions {
     None,
+    /// If an output file exists and this is set, it will be overwritten.  If this is NOT set
+    /// and the file exists, encryption/decryption will return an error.
     AllowOverwrite
 }
 
+/// Data input streams.
 pub enum InputStream {
     Unknown,
+    /// Read from the specified file.
     File(String),
 }
 
+/// Data output streams.
 pub enum OutputStream {
     Unknown,
+    /// Write to the specified file with the specified options.
     File(String,FileOptions),
 }
 
+/// Output format.
 pub enum OutputFormat {
     // EncryptedZip,
+
+    /// The default output format.  This can only (currently) be read by this program.
     EncryptFile,
 }
 
+/// Controls how random numbers are generated whenever they are needed by this library.
+/// Currently this is only required when generating an initialization vector
+/// (`InitializationVector::GenerateFromRng`).  Note, when decrypting, you do not need
+/// to specify this.
 pub enum RngMode {
+    /// Use the [Os RNG](https://doc.rust-lang.org/rand/rand/os/struct.OsRng.html) only
+    Os,
+    /// Use a combination of the Os and
+    /// [Isaac64](https://doc.rust-lang.org/rand/rand/isaac/struct.Isaac64Rng.html) generators.
+    /// Isaac is seeded with the Os RNG,
+    /// and the two RNGs are used to generate the resulting IV 50/50.
     OsIssac,
+    /// Use a combination of the Os,
+    /// [`rand::random`](https://doc.rust-lang.org/rand/rand/fn.random.html), and Isaac.
+    /// Isaac is seeded with the Os Rng
+    /// and rand.  Os and Isaac are used to generate the resulting IV 50/50.
     OsRandIssac,
+    /// Use the specified function to generate random u8 values.  The function should return a
+    /// random u8 each time it is called.
     Func(Box<Fn() -> u8>),
 }
 
+/// Specifies the initialization vector.  Note, when decrypting, you do not need to specify
+/// this since the IV is in the file.
 pub enum InitializationVector {
     Unknown,
+    /// Generate the vector randomly.  See `RngMode`.
     GenerateFromRng,
+    /// Use the specified function to provide the IV.  It should return a fully populated IV
+    /// array.
     Func(Box<Fn() -> IvArray>),
 }
 
+/// Specifies the encryption method.
 pub enum EncryptionMethod {
     AesCbc256,
 }
 
+/// The Scrypt LogN parameter.
 pub struct ScryptLogN(pub u8);
+/// The Scrypt R parameter.
 pub struct ScryptR(pub u32);
+/// The Scrypt P parameter.
 pub struct ScryptP(pub u32);
+/// Controls how the encryption key is generated from a text password.
 pub enum PasswordKeyGenMethod {
+    /// Use the scrypt algorithm.
+    /// http://www.tarsnap.com/scrypt/scrypt-slides.pdf
     Scrypt(ScryptLogN, ScryptR, ScryptP),
 }
-
+/// Specifies the encryption password.
 pub enum PasswordType {
     Unknown,
-    Text(String, PasswordKeyGenMethod), /* Note: leading/trailing whitespace is not trimmed on string */
-    Data(PwKeyArray),
+    /// Use the specified text string and PasswordKeyGenMethod.
+    /// Leading/trailing whitespace is not trimmed on the string.  Consider specifying
+    /// salt via `Config.salt()`.
+    Text(String, PasswordKeyGenMethod),
+    /// Use the specified function to provide the key.
     Func(Box<Fn() -> PwKeyArray>),
 }
 
@@ -79,28 +120,36 @@ pub enum ValidateError {
     InvalidOutputStream,
     PasswordTypeIsUnknown,
     PasswordIsEmpty,
-    PasswordDataIsAllZero,
     BufferTooSmall,
 }
 
+/// The main Configuration type.  This is a Builder object [1].
+///
+/// A config object can be reused; for instance, you can initially configure it
+/// for encryption using `encrypt()`, then switch it to decryption with `decrypt()`.
+///
+/// [1]: https://aturon.github.io/ownership/builders.html
 pub struct Config {
-    pub mode: Mode,
-    pub input_stream: InputStream,
-    pub output_stream: OutputStream,
-    pub output_format: OutputFormat,
-    pub rng_mode: RngMode,
-    pub initialization_vector: InitializationVector,
-    pub password: PasswordType,
-    pub salt: String,
-    pub encryption_method: EncryptionMethod,
-    pub buffer_size: usize,
+    mode: Mode,
+    input_stream: InputStream,
+    output_stream: OutputStream,
+    output_format: OutputFormat,
+    rng_mode: RngMode,
+    initialization_vector: InitializationVector,
+    password: PasswordType,
+    salt: String,
+    encryption_method: EncryptionMethod,
+    buffer_size: usize,
 }
 
+/// Returns true if the specfied slice contains all zero values, false otherwise.
 pub fn slice_is_zeroed(d: &[u8]) -> bool {
     d.iter().find(|b| **b != 0).is_none()
 }
 
 #[cfg(not(test))]
+/// Returns a set of default scrypt parameters: LogN 16, R 8, P 1.
+/// See http://www.tarsnap.com/scrypt/scrypt-slides.pdf for more details.
 pub fn default_scrypt_params() -> PasswordKeyGenMethod {
     // http://stackoverflow.com/questions/11126315/what-are-optimal-scrypt-work-factors
     PasswordKeyGenMethod::Scrypt(ScryptLogN(16), ScryptR(8), ScryptP(1))
@@ -112,7 +161,15 @@ pub fn default_scrypt_params() -> PasswordKeyGenMethod {
     PasswordKeyGenMethod::Scrypt(ScryptLogN(4), ScryptR(1), ScryptP(1))
 }
 
+/// Returns a set of scrypt parameters tuned for file encryption: LogN 20, R 8, P 1
+/// See http://www.tarsnap.com/scrypt/scrypt-slides.pdf for more details.
+pub fn scrypt_params_encrypt1() -> PasswordKeyGenMethod {
+    PasswordKeyGenMethod::Scrypt(ScryptLogN(20), ScryptR(8), ScryptP(1))
+}
+
 impl Config {
+    /// Constructs a new Config with default settings.  At a minimum, you must set input
+    /// streams and a password method, and configure it for encryption or decryption.
     pub fn new() -> Self {
         Config {
             mode: Mode::Unknown,
@@ -128,48 +185,62 @@ impl Config {
         }
     }
 
+    /// Enable decryption mode.
     pub fn decrypt(&mut self) -> &mut Self {
         self.mode = Mode::Decrypt;
         self
     }
+    /// Enable encryption mode.
     pub fn encrypt(&mut self) -> &mut Self {
         self.mode = Mode::Encrypt;
         self
     }
+    /// Set the input stream.
     pub fn input_stream(&mut self, is: InputStream) -> &mut Self {
         self.input_stream = is;
         self
     }
+    /// Set the output stream.
     pub fn output_stream(&mut self, os: OutputStream) -> &mut Self {
         self.output_stream = os;
         self
     }
+    /// Set the random number mode.  See the `RngMode` enum for information
+    /// on how this is used.
     pub fn rng_mode(&mut self, rng_mode: RngMode) -> &mut Self {
         self.rng_mode = rng_mode;
         self
     }
+    /// Set the method of determining the initialization vector.
     pub fn initialization_vector(&mut self,
                                  initialization_vector: InitializationVector)
                                  -> &mut Self {
         self.initialization_vector = initialization_vector;
         self
     }
+    /// Set the password method.
     pub fn password(&mut self, password: PasswordType) -> &mut Self {
         self.password = password;
         self
     }
-    pub fn salt(&mut self, salt: String) -> &mut Self {
-        self.salt = salt;
+    /// Set the salt.  Only used in password methods that require it; if not set,
+    /// defaults to "DefaultSalt".
+    pub fn salt(&mut self, salt: &str) -> &mut Self {
+        self.salt = salt.to_owned();
         self
     }
+    /// Set the encryption method.
     pub fn encryption_method(&mut self, encryption_method: EncryptionMethod) -> &mut Self {
         self.encryption_method = encryption_method;
         self
     }
+    /// Set the buffer size used for encryption and decryption.  Default is 65536 bytes.
     pub fn buffer_size(&mut self, buffer_size: usize) -> &mut Self {
         self.buffer_size = buffer_size;
         self
     }
+    /// Validate the encryption object; it is not necessary to call this manually since the
+    /// configuration will be validated when it is used.
     pub fn validate(&self) -> Result<(), ValidateError> {
         if let Mode::Unknown = self.mode {
             return Err(ValidateError::ModeNotSet);
@@ -186,12 +257,6 @@ impl Config {
                 return Err(ValidateError::PasswordIsEmpty)
             }
 
-            PasswordType::Data(ref d) => {
-                if slice_is_zeroed(d) {
-                    return Err(ValidateError::PasswordDataIsAllZero);
-                }
-            }
-
             PasswordType::Func(_) |
             PasswordType::Text(_, _) => (),
         }
@@ -200,6 +265,37 @@ impl Config {
         }
 
         Ok(())
+    }
+
+    pub fn get_mode(&self) -> &Mode {
+        return &self.mode;
+    }
+    pub fn get_input_stream(&self) -> &InputStream {
+        return &self.input_stream;
+    }
+    pub fn get_output_stream(&self) -> &OutputStream {
+        return &self.output_stream;
+    }
+    pub fn get_output_format(&self) -> &OutputFormat {
+        return &self.output_format;
+    }
+    pub fn get_rng_mode(&self) -> &RngMode {
+        return &self.rng_mode;
+    }
+    pub fn get_initialization_vector(&self) -> &InitializationVector {
+        return &self.initialization_vector;
+    }
+    pub fn get_password(&self) -> &PasswordType {
+        return &self.password;
+    }
+    pub fn get_salt(&self) -> &str {
+        return &self.salt;
+    }
+    pub fn get_encryption_method(&self) -> &EncryptionMethod {
+        return &self.encryption_method;
+    }
+    pub fn get_buffer_size(&self) -> usize {
+        return self.buffer_size;
     }
 }
 
@@ -238,10 +334,8 @@ fn validate() {
     check_ok!(c);
 
     let mut pd: [u8; PW_KEY_SIZE] = [0; PW_KEY_SIZE];
-    c.password(PasswordType::Data(pd));
-    check!(c, ValidateError::PasswordDataIsAllZero);
     pd[0] = 1;
-    c.password(PasswordType::Data(pd));
+    c.password(PasswordType::Func(Box::new(move || pd)));
     check_ok!(c);
 
     c.buffer_size(0);

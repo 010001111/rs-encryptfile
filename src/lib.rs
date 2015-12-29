@@ -147,7 +147,7 @@ pub fn make_scrypt_key(password: &str,
 pub fn generate_iv(c: &Config) -> Result<config::IvArray, EncryptError> {
     let init_val = 47;
     let mut iv: IvArray = [init_val; IV_SIZE];
-    if let RngMode::Func(ref bf) = c.rng_mode {
+    if let RngMode::Func(ref bf) = *c.get_rng_mode() {
         for item in &mut iv {
             *item = (*bf)();
         }
@@ -156,8 +156,9 @@ pub fn generate_iv(c: &Config) -> Result<config::IvArray, EncryptError> {
             Err(e) => return Err(EncryptError::OsRngFailed(e)),
             Ok(rng) => rng,
         };
-        let seed = match c.rng_mode {
-            RngMode::OsIssac => {
+        let seed = match *c.get_rng_mode() {
+            RngMode::Os
+            | RngMode::OsIssac => {
                 [os_rng.next_u64(), os_rng.next_u64(), os_rng.next_u64(), os_rng.next_u64()]
             }
             RngMode::OsRandIssac => {
@@ -170,19 +171,34 @@ pub fn generate_iv(c: &Config) -> Result<config::IvArray, EncryptError> {
                                                                    .to_owned()))
             }
         };
-        let mut isaac_rng = Isaac64Rng::from_seed(&seed);
 
         // TODO: needs crypto review.
-        // According to the rand crate docs, isaac64 is not supposed to be use for this.
-        // But the Os RNG may be backdoored (*cough* Windows Dual_EC_DRBG).  So in the interests
-        // of paranoia, use a mix of both.
-        {
-            let mut first = &mut iv[0..IV_SIZE / 2];
-            os_rng.fill_bytes(first);
-        }
-        {
-            let mut second = &mut iv[IV_SIZE / 2..IV_SIZE];
-            isaac_rng.fill_bytes(second);
+        match *c.get_rng_mode() {
+            RngMode::Func(_) => {
+                return Err(EncryptError::UnexpectedEnumVariant("IV Func should have already been \
+                                                                handled"
+                                                                   .to_owned()))
+            },
+            RngMode::Os => {
+                // skip isaac,  Trust os.
+                os_rng.fill_bytes(&mut iv);
+            },
+            RngMode::OsIssac
+            | RngMode::OsRandIssac => {
+                // According to the rand crate docs, isaac64 is not supposed to be use for this.
+                // But the Os RNG may be backdoored (*cough* Windows Dual_EC_DRBG).
+                // So in the interests of paranoia, use a mix of both.
+
+                let mut isaac_rng = Isaac64Rng::from_seed(&seed);
+                {
+                    let mut first = &mut iv[0..IV_SIZE / 2];
+                    os_rng.fill_bytes(first);
+                }
+                {
+                    let mut second = &mut iv[IV_SIZE / 2..IV_SIZE];
+                    isaac_rng.fill_bytes(second);
+                }
+            }
         }
     }
 
@@ -195,15 +211,14 @@ pub fn generate_iv(c: &Config) -> Result<config::IvArray, EncryptError> {
 }
 
 fn get_pw_key(c: &Config) -> Result<PwKeyArray, EncryptError> {
-    match c.password {
+    match *c.get_password() {
         PasswordType::Unknown => {
             Err(EncryptError::UnexpectedEnumVariant("Password type unknown not allowed here"
                                                         .to_owned()))
         }
         PasswordType::Text(ref pw, PasswordKeyGenMethod::Scrypt(ref logn, ref r, ref p)) => {
-            Ok(make_scrypt_key(pw, &c.salt, logn, r, p))
+            Ok(make_scrypt_key(pw, &c.get_salt(), logn, r, p))
         }
-        PasswordType::Data(d) => Ok(d),
         PasswordType::Func(ref bf) => Ok((*bf)()),
     }
     .and_then(|pwkey| {
@@ -218,7 +233,7 @@ fn get_pw_key(c: &Config) -> Result<PwKeyArray, EncryptError> {
 }
 
 fn get_iv(c: &Config) -> Result<IvArray, EncryptError> {
-    match c.initialization_vector {
+    match *c.get_initialization_vector() {
         InitializationVector::Unknown =>
             Err(EncryptError::UnexpectedEnumVariant("Unknown IV not allowed here".to_owned())),
         InitializationVector::Func(ref bf) => Ok((*bf)()),
@@ -242,7 +257,7 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
     };
 
     // open streams
-    let in_stream: Box<SeekRead> = match c.input_stream {
+    let in_stream: Box<SeekRead> = match *c.get_input_stream() {
         InputStream::Unknown => {
             return Err(EncryptError::UnexpectedEnumVariant("Unknown InputStream not allowed here"
                                                                .to_owned()))
@@ -250,7 +265,7 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
         InputStream::File(ref file) => Box::new(try!(File::open(file))),
     };
 
-    let out_stream: Box<SeekWrite> = match c.output_stream {
+    let out_stream: Box<SeekWrite> = match *c.get_output_stream() {
         OutputStream::Unknown => {
             return Err(EncryptError::UnexpectedEnumVariant("Unknown OutputStream not allowed here"
                                                                .to_owned()))
@@ -270,10 +285,13 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
     };
 
     // heap-alloc buffers
-    let mut read_buf: Vec<u8> = vec![0;c.buffer_size];
-    let mut write_buf: Vec<u8> = vec![0;c.buffer_size];
+    let mut read_buf: Vec<u8> = vec![0;c.get_buffer_size()];
+    let mut write_buf: Vec<u8> = vec![0;c.get_buffer_size()];
 
     let pwkey = try!(get_pw_key(c));
+    if config::slice_is_zeroed(&pwkey) {
+        return Err(EncryptError::PwKeyIsZeroed);
+    }
 
     let mut state = EncryptState {
         config: c,
@@ -283,7 +301,7 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
         write_buf: &mut write_buf,
     };
 
-    match c.mode {
+    match *c.get_mode() {
         Mode::Unknown => {
             return Err(EncryptError::UnexpectedEnumVariant("Unknown Mode not allowed here"
                                                                .to_owned()))
@@ -294,7 +312,7 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
             try!(encrypt(state, in_stream, out_stream))
         }
         Mode::Decrypt => {
-            if let OutputStream::File(ref fname, _) = c.output_stream {
+            if let OutputStream::File(ref fname, _) = *c.get_output_stream() {
                 // if decrypting to file, since we have to verify the hmac, don't write directly
                 // to the target.  write to a temporary
                 // file, then move it over the target path if the decryption & hmac check succeed.
@@ -339,7 +357,7 @@ mod tests {
                          pw: &str,
                          salt: &str,
                          ex: PwKeyArray) {
-            c.salt(salt.to_owned());
+            c.salt(salt);
             c.password(PasswordType::Text(pw.to_owned(),
                                                PasswordKeyGenMethod::Scrypt(ScryptLogN(logn),
                                                                             ScryptR(r),
@@ -384,11 +402,7 @@ mod tests {
     fn get_pwkey_variants() {
         let mut c = Config::new();
 
-        let pwkey: PwKeyArray = [89; PW_KEY_SIZE];
-        c.password(PasswordType::Data(pwkey));
-        let key = super::get_pw_key(&c).unwrap();
-        check_eq(&key, &pwkey, format!("Data pwkey variant failed"));
-
+        let pwkey: PwKeyArray = [87; PW_KEY_SIZE];
         let expected = pwkey;
         let pwfn = Box::new(move || pwkey);
         c.password(PasswordType::Func(pwfn));
@@ -396,7 +410,8 @@ mod tests {
         check_eq(&expected, &key, format!("Func pwkey variant failed"));
 
         let pwkey: PwKeyArray = [0; PW_KEY_SIZE];
-        c.password(PasswordType::Data(pwkey));
+        let pwfn = Box::new(move || pwkey);
+        c.password(PasswordType::Func(pwfn));
         let key = super::get_pw_key(&c);
         let _ = key.map(|_| panic!("Expected error, but got valid key"));
     }

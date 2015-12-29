@@ -124,7 +124,7 @@ impl From<byteorder::Error> for EncryptError {
     }
 }
 
-pub fn make_scrypt_key(password: &str,
+fn make_scrypt_key(password: &str,
                        salt: &str,
                        logn: &ScryptLogN,
                        r: &ScryptR,
@@ -144,7 +144,7 @@ pub fn make_scrypt_key(password: &str,
     ek
 }
 
-pub fn generate_iv(c: &Config) -> Result<config::IvArray, EncryptError> {
+fn generate_iv(c: &Config) -> Result<config::IvArray, EncryptError> {
     let init_val = 47;
     let mut iv: IvArray = [init_val; IV_SIZE];
     if let RngMode::Func(ref bf) = *c.get_rng_mode() {

@@ -66,8 +66,8 @@
 //!
 //!
 
-//#![feature(plugin)]
-//#![plugin(clippy)]
+// #![feature(plugin)]
+// #![plugin(clippy)]
 
 use std::io::{Read, Write};
 use std::fs::{File, rename, OpenOptions};
@@ -128,11 +128,11 @@ impl From<byteorder::Error> for EncryptError {
 }
 
 fn make_scrypt_key(password: &str,
-                       salt: &str,
-                       logn: &ScryptLogN,
-                       r: &ScryptR,
-                       p: &ScryptP)
-                       -> PwKeyArray {
+                   salt: &str,
+                   logn: &ScryptLogN,
+                   r: &ScryptR,
+                   p: &ScryptP)
+                   -> PwKeyArray {
     let &ScryptLogN(logn) = logn;
     let &ScryptR(r) = r;
     let &ScryptP(p) = p;
@@ -160,8 +160,8 @@ fn generate_iv(c: &Config) -> Result<config::IvArray, EncryptError> {
             Ok(rng) => rng,
         };
         let seed = match *c.get_rng_mode() {
-            RngMode::Os
-            | RngMode::OsIssac => {
+            RngMode::Os |
+            RngMode::OsIssac => {
                 [os_rng.next_u64(), os_rng.next_u64(), os_rng.next_u64(), os_rng.next_u64()]
             }
             RngMode::OsRandIssac => {
@@ -181,13 +181,13 @@ fn generate_iv(c: &Config) -> Result<config::IvArray, EncryptError> {
                 return Err(EncryptError::UnexpectedEnumVariant("IV Func should have already been \
                                                                 handled"
                                                                    .to_owned()))
-            },
+            }
             RngMode::Os => {
                 // skip isaac,  Trust os.
                 os_rng.fill_bytes(&mut iv);
-            },
-            RngMode::OsIssac
-            | RngMode::OsRandIssac => {
+            }
+            RngMode::OsIssac |
+            RngMode::OsRandIssac => {
                 // According to the rand crate docs, isaac64 is not supposed to be use for this.
                 // But the Os RNG may be backdoored (*cough* Windows Dual_EC_DRBG).
                 // So in the interests of paranoia, use a mix of both.
@@ -213,7 +213,10 @@ fn generate_iv(c: &Config) -> Result<config::IvArray, EncryptError> {
     Ok(iv)
 }
 
-fn make_key_from_method(pw:&str, salt:&str, m:&PasswordKeyGenMethod) -> Result<PwKeyArray, EncryptError> {
+fn make_key_from_method(pw: &str,
+                        salt: &str,
+                        m: &PasswordKeyGenMethod)
+                        -> Result<PwKeyArray, EncryptError> {
     match m {
         &PasswordKeyGenMethod::ReadFromFile => Err(EncryptError::InvalidPasswordGenMethod),
         &PasswordKeyGenMethod::Scrypt(ref logn, ref r, ref p) => {
@@ -228,7 +231,7 @@ fn get_pw_key(c: &Config) -> Result<PwKeyArray, EncryptError> {
             Err(EncryptError::UnexpectedEnumVariant("Password type unknown not allowed here"
                                                         .to_owned()))
         }
-        PasswordType::Text(ref pw, ref method) => make_key_from_method(pw,&c.get_salt(),method),
+        PasswordType::Text(ref pw, ref method) => make_key_from_method(pw, &c.get_salt(), method),
         PasswordType::Func(ref bf) => Ok((*bf)()),
     }
     .and_then(|pwkey| {
@@ -360,9 +363,9 @@ mod tests {
                          ex: PwKeyArray) {
             c.salt(salt);
             c.password(PasswordType::Text(pw.to_owned(),
-                                               PasswordKeyGenMethod::Scrypt(ScryptLogN(logn),
-                                                                            ScryptR(r),
-                                                                            ScryptP(p))));
+                                          PasswordKeyGenMethod::Scrypt(ScryptLogN(logn),
+                                                                       ScryptR(r),
+                                                                       ScryptP(p))));
             let key = super::get_pw_key(&c);
             let key = key.map_err(|e| panic!("Unexpected error: {:?}", e));
 

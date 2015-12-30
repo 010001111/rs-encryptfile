@@ -65,7 +65,6 @@ pub enum OutputStream {
 /// Output format.
 pub enum OutputFormat {
     // EncryptedZip,
-
     /// The default output format.  This can only (currently) be read by this program.
     EncryptFile,
 }
@@ -231,16 +230,16 @@ impl Config {
         self
     }
     /// Set output options.
-    pub fn output_options(&mut self, opts:HashSet<OutputOption>) -> &mut Self {
+    pub fn output_options(&mut self, opts: HashSet<OutputOption>) -> &mut Self {
         self.output_options = opts;
         self
     }
     /// Add an output option.
-    pub fn add_output_option(&mut self, opt:OutputOption) -> &mut Self {
+    pub fn add_output_option(&mut self, opt: OutputOption) -> &mut Self {
         self.output_options.insert(opt);
         self
     }
-    pub fn remove_output_option(&mut self, opt:OutputOption) -> &mut Self {
+    pub fn remove_output_option(&mut self, opt: OutputOption) -> &mut Self {
         self.output_options.remove(&opt);
         self
     }

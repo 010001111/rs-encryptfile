@@ -10,7 +10,7 @@ use self::crypto::mac::Mac;
 enum HelperState {
     Encrypting(Box<crypto::symmetriccipher::Encryptor>),
     Decrypting(Box<crypto::symmetriccipher::Decryptor>),
-    Done
+    Done,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -27,7 +27,7 @@ impl From<symmetriccipher::SymmetricCipherError> for CryptoError {
 }
 
 pub struct CryptoHelper {
-    state:HelperState,
+    state: HelperState,
     pub hmac: Hmac<Sha256>,
 }
 
@@ -38,18 +38,18 @@ pub fn hmac_to_vec(hmac: &mut Hmac<Sha256>) -> Vec<u8> {
 }
 
 impl CryptoHelper {
-    pub fn new(key: &[u8], iv: &[u8], encrypting:bool) -> Self {
+    pub fn new(key: &[u8], iv: &[u8], encrypting: bool) -> Self {
         let state = {
             if encrypting {
                 HelperState::Encrypting(aes::cbc_encryptor(aes::KeySize::KeySize256,
-                                                   key,
-                                                   iv,
-                                                   blockmodes::PkcsPadding))
+                                                           key,
+                                                           iv,
+                                                           blockmodes::PkcsPadding))
             } else {
                 HelperState::Decrypting(aes::cbc_decryptor(aes::KeySize::KeySize256,
-                                                   key,
-                                                   iv,
-                                                   blockmodes::PkcsPadding))
+                                                           key,
+                                                           iv,
+                                                           blockmodes::PkcsPadding))
             }
         };
         CryptoHelper {
@@ -58,10 +58,7 @@ impl CryptoHelper {
         }
     }
 
-    pub fn encrypt(&mut self,
-                   data: &[u8],
-                   is_all_data: bool)
-                   -> Result<Vec<u8>, CryptoError> {
+    pub fn encrypt(&mut self, data: &[u8], is_all_data: bool) -> Result<Vec<u8>, CryptoError> {
         let final_result = {
             let encryptor = match self.state {
                 HelperState::Encrypting(ref mut enc) => enc,
@@ -75,10 +72,14 @@ impl CryptoHelper {
             let mut write_buffer = buffer::RefWriteBuffer::new(&mut buffer);
 
             loop {
-                let result = try!(encryptor
-                                      .encrypt(&mut read_buffer, &mut write_buffer, is_all_data));
+                let result = try!(encryptor.encrypt(&mut read_buffer,
+                                                    &mut write_buffer,
+                                                    is_all_data));
 
-                final_result.extend(write_buffer.take_read_buffer().take_remaining().iter().cloned());
+                final_result.extend(write_buffer.take_read_buffer()
+                                                .take_remaining()
+                                                .iter()
+                                                .cloned());
 
                 match result {
                     BufferResult::BufferUnderflow => break,
@@ -90,7 +91,7 @@ impl CryptoHelper {
             final_result
         };
 
-        if is_all_data { 
+        if is_all_data {
             self.state = HelperState::Done;
         }
 
@@ -103,9 +104,9 @@ impl CryptoHelper {
                    -> Result<Vec<u8>, CryptoError> {
         let final_result = {
             let decryptor = match self.state {
-               HelperState::Encrypting(_) => return Err(CryptoError::AlreadyEncrypting),
-               HelperState::Decrypting(ref mut dec) => dec,
-               HelperState::Done => return Err(CryptoError::AlreadyDone),
+                HelperState::Encrypting(_) => return Err(CryptoError::AlreadyEncrypting),
+                HelperState::Decrypting(ref mut dec) => dec,
+                HelperState::Done => return Err(CryptoError::AlreadyDone),
             };
 
             let mut final_result = Vec::<u8>::new();
@@ -114,10 +115,14 @@ impl CryptoHelper {
             let mut write_buffer = buffer::RefWriteBuffer::new(&mut buffer);
 
             loop {
-                let result = try!(decryptor
-                                      .decrypt(&mut read_buffer, &mut write_buffer, is_all_data));
+                let result = try!(decryptor.decrypt(&mut read_buffer,
+                                                    &mut write_buffer,
+                                                    is_all_data));
 
-                final_result.extend(write_buffer.take_read_buffer().take_remaining().iter().cloned());
+                final_result.extend(write_buffer.take_read_buffer()
+                                                .take_remaining()
+                                                .iter()
+                                                .cloned());
                 match result {
                     BufferResult::BufferUnderflow => break,
                     BufferResult::BufferOverflow => {}
@@ -143,40 +148,42 @@ mod tests {
 
     #[test]
     fn crypto_util_state() {
-        let iv:IvArray = [0;IV_SIZE];
-        let key:PwKeyArray = [0;PW_KEY_SIZE];
+        let iv: IvArray = [0; IV_SIZE];
+        let key: PwKeyArray = [0; PW_KEY_SIZE];
 
         {
-            let data = [47;100];
+            let data = [47; 100];
             let mut crypto = super::CryptoHelper::new(&key, &iv, true);
-            let _ = crypto.encrypt(&data,false).map_err(|e| panic!("Unexpected error: {:?}", e));
-            match crypto.decrypt(&data,true) {
+            let _ = crypto.encrypt(&data, false).map_err(|e| panic!("Unexpected error: {:?}", e));
+            match crypto.decrypt(&data, true) {
                 Err(CryptoError::AlreadyEncrypting) => (),
-                e => panic!("Unexpected error: {:?}", e)
+                e => panic!("Unexpected error: {:?}", e),
             }
-            let _ = crypto.encrypt(&data,true).map_err(|e| panic!("Unexpected error: {:?}", e));
-            match crypto.encrypt(&data,true) {
+            let _ = crypto.encrypt(&data, true).map_err(|e| panic!("Unexpected error: {:?}", e));
+            match crypto.encrypt(&data, true) {
                 Err(CryptoError::AlreadyDone) => (),
-                e => panic!("Unexpected error: {:?}", e)
+                e => panic!("Unexpected error: {:?}", e),
             }
         }
 
         {
             let data = {
-                let data = [47;100];
+                let data = [47; 100];
                 let mut crypto = super::CryptoHelper::new(&key, &iv, true);
-                crypto.encrypt(&data,true).map_err(|e| panic!("Unexpected error: {:?}", e)).unwrap()
+                crypto.encrypt(&data, true)
+                      .map_err(|e| panic!("Unexpected error: {:?}", e))
+                      .unwrap()
             };
             let mut crypto = super::CryptoHelper::new(&key, &iv, false);
-            let _ = crypto.decrypt(&data,false).map_err(|e| panic!("Unexpected error: {:?}", e));
-            match crypto.encrypt(&data,true) {
+            let _ = crypto.decrypt(&data, false).map_err(|e| panic!("Unexpected error: {:?}", e));
+            match crypto.encrypt(&data, true) {
                 Err(CryptoError::AlreadyDecrypting) => (),
-                e => panic!("Unexpected error: {:?}", e)
+                e => panic!("Unexpected error: {:?}", e),
             }
-            let _ = crypto.decrypt(&data,true).map_err(|e| panic!("Unexpected error: {:?}", e));
-            match crypto.decrypt(&data,true) {
+            let _ = crypto.decrypt(&data, true).map_err(|e| panic!("Unexpected error: {:?}", e));
+            match crypto.decrypt(&data, true) {
                 Err(CryptoError::AlreadyDone) => (),
-                e => panic!("Unexpected error: {:?}", e)
+                e => panic!("Unexpected error: {:?}", e),
             }
         }
     }

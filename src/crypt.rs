@@ -101,34 +101,39 @@ impl FileHeader {
     }
 }
 
-fn get_key_metadata(c:&Config) -> Result<Vec<u8>,EncryptError> {
-    let mut md:Vec<u8> = Vec::new();
+fn get_key_metadata(c: &Config) -> Result<Vec<u8>, EncryptError> {
+    let mut md: Vec<u8> = Vec::new();
     if !c.get_output_options().contains(&OutputOption::IncludeKeyMetadata) {
         return Ok(md);
     }
 
     match c.get_password() {
-        &PasswordType::Unknown
-        | &PasswordType::Func(_)
-        | &PasswordType::Text(_, PasswordKeyGenMethod::ReadFromFile) => (),
+        &PasswordType::Unknown |
+        &PasswordType::Func(_) |
+        &PasswordType::Text(_, PasswordKeyGenMethod::ReadFromFile) => (),
         &PasswordType::Text(_,
-            PasswordKeyGenMethod::Scrypt(ScryptLogN(logn),ScryptR(r),ScryptP(p))) => {
-                try!(md.write_u32::<LittleEndian>(MD_TYPE_SCRYPT));
-                try!(md.write_u8(logn));
-                try!(md.write_u32::<LittleEndian>(r));
-                try!(md.write_u32::<LittleEndian>(p));
-        },
+                            PasswordKeyGenMethod::Scrypt(ScryptLogN(logn),
+                                                         ScryptR(r),
+                                                         ScryptP(p))) => {
+            try!(md.write_u32::<LittleEndian>(MD_TYPE_SCRYPT));
+            try!(md.write_u8(logn));
+            try!(md.write_u32::<LittleEndian>(r));
+            try!(md.write_u32::<LittleEndian>(p));
+        }
     }
 
     Ok(md)
 }
 
-fn read_key_metadata(s:&mut Read, key_md_size:usize) -> Result<(PasswordKeyGenMethod,Vec<u8>),EncryptError> {
+fn read_key_metadata(s: &mut Read,
+                     key_md_size: usize)
+                     -> Result<(PasswordKeyGenMethod, Vec<u8>), EncryptError> {
     if key_md_size == 0 {
-        return Err(EncryptError::InternalError("Key md size is zero, can't read metadata".to_owned()))
+        return Err(EncryptError::InternalError("Key md size is zero, can't read metadata"
+                                                   .to_owned()));
     };
 
-    let mut raw_bytes:Vec<u8> = vec![0;key_md_size];
+    let mut raw_bytes: Vec<u8> = vec![0;key_md_size];
     // TODO: use read_exact when it is stable
     let nread = try!(s.read(&mut raw_bytes));
     if nread != key_md_size {
@@ -143,13 +148,13 @@ fn read_key_metadata(s:&mut Read, key_md_size:usize) -> Result<(PasswordKeyGenMe
                 let logn = ScryptLogN(try!(s.read_u8()));
                 let r = ScryptR(try!(s.read_u32::<LittleEndian>()));
                 let p = ScryptP(try!(s.read_u32::<LittleEndian>()));
-                PasswordKeyGenMethod::Scrypt(logn,r,p)
-            },
-            x => return Err(EncryptError::InvalidKeyMetadataType(x))
+                PasswordKeyGenMethod::Scrypt(logn, r, p)
+            }
+            x => return Err(EncryptError::InvalidKeyMetadataType(x)),
         }
     };
 
-    Ok((method,raw_bytes))
+    Ok((method, raw_bytes))
 }
 
 
@@ -162,7 +167,7 @@ pub fn encrypt(state: EncryptState,
     let pwkey = try!(super::get_pw_key(state.config));
 
     if config::slice_is_zeroed(&pwkey) {
-       return Err(EncryptError::PwKeyIsZeroed);
+        return Err(EncryptError::PwKeyIsZeroed);
     }
 
     let mut crypto = crypto_util::CryptoHelper::new(&pwkey, &state.iv, true);
@@ -219,7 +224,9 @@ pub fn encrypt(state: EncryptState,
     let pos = try!(out_stream.seek(SeekFrom::Current(0)));
     if pos >= header_capacity as u64 {
         // faaack
-        return Err(EncryptError::InternalError(format!("Stomped data with header stuff: {} {}", pos, header_capacity)))
+        return Err(EncryptError::InternalError(format!("Stomped data with header stuff: {} {}",
+                                                       pos,
+                                                       header_capacity)));
     }
 
     Ok(())
@@ -242,30 +249,37 @@ pub fn decrypt(state: EncryptState,
     let hmac_unused = HMAC_RESERVED - nread;
     try!(in_stream.seek(SeekFrom::Current(hmac_unused as i64)));
 
-    let (pwkey,raw_md_bytes) = if header.key_md_size > 0 {
-        let (method,raw_md_bytes) = try!(read_key_metadata(&mut in_stream, header.key_md_size as usize));
+    let (pwkey, raw_md_bytes) = if header.key_md_size > 0 {
+        let (method, raw_md_bytes) = try!(read_key_metadata(&mut in_stream,
+                                                            header.key_md_size as usize));
         let key = try!(match *state.config.get_password() {
-            PasswordType::Unknown
-            | PasswordType::Func(_) =>
-                Err(EncryptError::UnexpectedEnumVariant(
-                    format!("Illegal password type (unknown or func)"))),
-            PasswordType::Text(ref pw, _) => super::make_key_from_method(pw,state.config.get_salt(), &method),
+            PasswordType::Unknown |
+            PasswordType::Func(_) => {
+                Err(EncryptError::UnexpectedEnumVariant(format!("Illegal password type (unknown \
+                                                                 or func)")))
+            }
+            PasswordType::Text(ref pw, _) => {
+                super::make_key_from_method(pw, state.config.get_salt(), &method)
+            }
         });
-        (key,raw_md_bytes)
+        (key, raw_md_bytes)
     } else {
         // no metadata in file; this is an error if the method requires it
         match *state.config.get_password() {
-            PasswordType::Text(_, PasswordKeyGenMethod::ReadFromFile) =>
-                return Err(EncryptError::NoKeyMetadataFound(
-                    "Metadata not found; you must supply a key gen method that matches the encrypted file".to_owned())),
-            PasswordType::Unknown
-            | PasswordType::Func(_)
-            | PasswordType::Text(_, _) => ()
+            PasswordType::Text(_, PasswordKeyGenMethod::ReadFromFile) => {
+                return Err(EncryptError::NoKeyMetadataFound("Metadata not found; you must supply \
+                                                             a key gen method that matches the \
+                                                             encrypted file"
+                                                                .to_owned()))
+            }
+            PasswordType::Unknown |
+            PasswordType::Func(_) |
+            PasswordType::Text(_, _) => (),
         }
 
         let key = try!(super::get_pw_key(state.config));
 
-        (key,vec![0;0])
+        (key, vec![0;0])
     };
 
     let mut crypto = crypto_util::CryptoHelper::new(&pwkey, &header.iv, false);
@@ -533,8 +547,7 @@ mod tests {
         c.decrypt();
         c.input_stream(InputStream::File(in_fname.to_owned()));
         c.output_stream(OutputStream::File(out_fname.to_owned()));
-        c.password(PasswordType::Text("Booger".to_owned(),
-            PasswordKeyGenMethod::ReadFromFile));
+        c.password(PasswordType::Text("Booger".to_owned(), PasswordKeyGenMethod::ReadFromFile));
         match super::process(&c) {
             Err(EncryptError::NoKeyMetadataFound(_)) => (),
             x => panic!("Unexpected result: {:?}", x),

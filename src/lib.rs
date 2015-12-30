@@ -15,6 +15,8 @@
 //!    with the output file.
 //!
 //! This library is [on GitHub](https://github.com/jmquigs/rs-encryptfile).
+//! Feel free to make feature suggestions in the
+//!    [issue tracker](https://github.com/jmquigs/rs-encryptfile/issues).
 //!
 //! ## Example
 //!
@@ -46,7 +48,7 @@
 //! [1]: https://github.com/DaGenix/rust-crypto
 //! [2]: https://en.wikipedia.org/wiki/Hash-based_message_authentication_code
 //!
-//!
+//! 
 //!
 //!
 //!

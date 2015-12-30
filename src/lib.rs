@@ -36,7 +36,7 @@
 //! c.input_stream(ef::InputStream::File("/tmp/__encrypted_bash_history.ef".to_owned()))
 //!  .output_stream(ef::OutputStream::File("/tmp/__encrypted_bash_history.txt".to_owned()))
 //!  .add_output_option(ef::OutputOption::AllowOverwrite)
-//!  .password(ef::PasswordType::Text("iloveyou".to_owned(), ef::default_scrypt_params()))
+//!  .password(ef::PasswordType::Text("iloveyou".to_owned(), ef::PasswordKeyGenMethod::ReadFromFile))
 //!  .decrypt();
 //! let _ = ef::process(&c).map_err(|e| panic!("error decrypting: {:?}", e));
 //! ```

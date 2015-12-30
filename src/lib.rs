@@ -11,6 +11,9 @@
 //!
 //! 2. Support for encryption libraries other than rust crypto
 //!
+//! 3. Support for arbitrary user-provided metadata that is included (encrypted)
+//!    with the output file.
+//!
 //! This library is [on GitHub](https://github.com/jmquigs/rs-encryptfile).
 //!
 //! ## Example
@@ -27,7 +30,7 @@
 //!  .output_stream(ef::OutputStream::File("/tmp/__encrypted_bash_history.ef".to_owned()))
 //!  .add_output_option(ef::OutputOption::AllowOverwrite)
 //!  .initialization_vector(ef::InitializationVector::GenerateFromRng)
-//!  .password(ef::PasswordType::Text("iloveyou".to_owned(), ef::default_scrypt_params()))
+//!  .password(ef::PasswordType::Text("iloveyou".to_owned(), ef::scrypt_defaults()))
 //!  .encrypt();
 //! let _ = ef::process(&c).map_err(|e| panic!("error encrypting: {:?}", e));
 //!
@@ -81,7 +84,10 @@ use self::crypto::scrypt::{scrypt, ScryptParams};
 
 pub use config::{Config, PW_KEY_SIZE, IV_SIZE, PwKeyArray, IvArray, ScryptR, ScryptP, ScryptLogN,
                  PasswordType, PasswordKeyGenMethod, InitializationVector, RngMode, InputStream,
-                 Mode, OutputStream, SeekRead, SeekWrite, default_scrypt_params, OutputOption};
+                 Mode, OutputStream,
+                 scrypt_defaults, scrypt_params_encrypt1, OutputOption};
+
+use config::{SeekRead, SeekWrite};
 
 mod config;
 mod crypto_util;
@@ -263,6 +269,8 @@ fn get_iv(c: &Config) -> Result<IvArray, EncryptError> {
     })
 }
 
+/// Process the config and produce the result.  This function does not "consume" the config,
+/// so it can be reconfigured and reused after `process()` returns.
 pub fn process(c: &Config) -> Result<(), EncryptError> {
     match c.validate() {
         Err(e) => return Err(EncryptError::ValidateFailed(e)),

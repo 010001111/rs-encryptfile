@@ -23,7 +23,7 @@ fn main() {
     let mut c = ef::Config::new();
     c.buffer_size(1048576*1)
         .password(ef::PasswordType::Text("swordfish".to_owned(),
-            ef::default_scrypt_params()))
+            ef::scrypt_defaults()))
         .input_stream(ef::InputStream::File(in_file.to_owned()));
 
     match in_mode.as_ref() {

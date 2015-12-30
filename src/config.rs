@@ -24,25 +24,25 @@ impl<T> SeekWrite for T where T: Seek + Write
 {}
 
 #[derive(PartialEq,Eq,Hash)]
+/// Output options.
 pub enum OutputOption {
-    /// If an output file exists and this is set, it will be overwritten.  If this is NOT set
+    /// If the output file exists and this is set, it will be overwritten.  If this is NOT set
     /// and the file exists, encryption/decryption will return an error.
+    ///
+    /// This setting is disabled by default.
     AllowOverwrite,
-    /// Controls whether metadata about the generated key is included in the encrypted output file.
-    /// For example, if scrypt is used, this metadata contains the logN,R,and P
+    /// Controls whether metadata about the generated key is included (as cleartext)
+    /// in the output file.
+    /// For example, if scrypt is used, the metadata contains the Log(N),R,and P
     /// parameters vaues that were provided to scrypt to
-    /// generate the key.  This provides a margin of safety in case the original parameters are
+    /// generate the key.  The metadata does not include the
+    /// original password text or salt.
+    ///
+    /// This provides a margin of safety in case the original parameters are
     /// lost and the file needs to be decrypted; however, it also make it easier for an attacker
     /// to run brute force attacks since he will know what parameters to use.
-    /// Note, this metadata does not include the
-    /// original password text or salt.  This setting only affects password methods that use the
+    /// This setting only affects password types that use the
     /// `PasswordKeyGenMethod` enum.
-    ///
-    /// Disabling this and subsequently "forgetting" the parameters may not be terrible.
-    /// If you are the legitimate owner of the file, and you have a (small!) list of
-    /// passwords and salts that could have been used, and you can run your own brute-force
-    /// search with every conceivable scrypt parameter value that you might have used.  Annoying,
-    /// but recoverable.
     ///
     /// This setting enabled by default.
     IncludeKeyMetadata,
@@ -169,20 +169,20 @@ pub fn slice_is_zeroed(d: &[u8]) -> bool {
 #[cfg(not(test))]
 /// Returns a set of default scrypt parameters: LogN 16, R 8, P 1.
 /// See http://www.tarsnap.com/scrypt/scrypt-slides.pdf for more details.
-pub fn default_scrypt_params() -> PasswordKeyGenMethod {
+pub fn scrypt_defaults() -> PasswordKeyGenMethod {
     // http://stackoverflow.com/questions/11126315/what-are-optimal-scrypt-work-factors
     PasswordKeyGenMethod::Scrypt(ScryptLogN(16), ScryptR(8), ScryptP(1))
 }
 // todo: fix 'doc' after this is fixed: https://github.com/rust-lang/rfcs/issues/915
 #[cfg(any(test,doc))]
-pub fn default_scrypt_params() -> PasswordKeyGenMethod {
+pub fn scrypt_defaults() -> PasswordKeyGenMethod {
     // don't melt my laptop
     PasswordKeyGenMethod::Scrypt(ScryptLogN(4), ScryptR(1), ScryptP(1))
 }
 
+#[allow(dead_code)]
 /// Returns a set of scrypt parameters tuned for file encryption: LogN 20, R 8, P 1
 /// See http://www.tarsnap.com/scrypt/scrypt-slides.pdf for more details.
-#[allow(dead_code)]
 pub fn scrypt_params_encrypt1() -> PasswordKeyGenMethod {
     PasswordKeyGenMethod::Scrypt(ScryptLogN(20), ScryptR(8), ScryptP(1))
 }
@@ -239,6 +239,7 @@ impl Config {
         self.output_options.insert(opt);
         self
     }
+    /// Remove an output option.
     pub fn remove_output_option(&mut self, opt: OutputOption) -> &mut Self {
         self.output_options.remove(&opt);
         self
@@ -369,9 +370,9 @@ fn validate() {
     c.output_stream(OutputStream::File("/foo.out".to_owned()));
     check!(c, ValidateError::PasswordTypeIsUnknown);
 
-    c.password(PasswordType::Text("".to_owned(), default_scrypt_params()));
+    c.password(PasswordType::Text("".to_owned(), scrypt_defaults()));
     check!(c, ValidateError::PasswordIsEmpty);
-    c.password(PasswordType::Text("    ".to_owned(), default_scrypt_params()));
+    c.password(PasswordType::Text("    ".to_owned(), scrypt_defaults()));
     check_ok!(c);
 
     let mut pd: [u8; PW_KEY_SIZE] = [0; PW_KEY_SIZE];

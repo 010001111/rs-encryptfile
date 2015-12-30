@@ -354,7 +354,7 @@ mod tests {
         c.input_stream(InputStream::File(in_fname.to_owned()));
         c.output_stream(OutputStream::File(out_fname.to_owned()));
         c.initialization_vector(InitializationVector::GenerateFromRng);
-        c.password(PasswordType::Text(pw.to_owned(), default_scrypt_params()));
+        c.password(PasswordType::Text(pw.to_owned(), scrypt_defaults()));
         c.encrypt();
 
         let res = super::process(&c).map_err(|e| panic!("error encrypting: {:?}", e));
@@ -376,7 +376,7 @@ mod tests {
         remove_file(&out_fname).unwrap();
 
         let mut c = Config::new();
-        c.password(PasswordType::Text("Swordfish".to_owned(), default_scrypt_params()));
+        c.password(PasswordType::Text("Swordfish".to_owned(), scrypt_defaults()));
         c.input_stream(InputStream::File(in_fname.to_owned()));
         c.output_stream(OutputStream::File(out_fname.to_owned()));
         c.decrypt();
@@ -401,7 +401,7 @@ mod tests {
         remove_file(&out_fname).unwrap();
 
         let mut c = Config::new();
-        c.password(PasswordType::Text("Clownfish".to_owned(), default_scrypt_params()));
+        c.password(PasswordType::Text("Clownfish".to_owned(), scrypt_defaults()));
         c.input_stream(InputStream::File(in_fname.to_owned()));
         c.output_stream(OutputStream::File(out_fname.to_owned()));
         c.decrypt();
@@ -429,7 +429,7 @@ mod tests {
         remove_file(&out_fname).unwrap();
 
         let mut c = Config::new();
-        c.password(PasswordType::Text("Swordfish".to_owned(), default_scrypt_params()));
+        c.password(PasswordType::Text("Swordfish".to_owned(), scrypt_defaults()));
         c.input_stream(InputStream::File(in_fname.to_owned()));
         c.output_stream(OutputStream::File(out_fname.to_owned()));
         c.decrypt();
@@ -456,7 +456,7 @@ mod tests {
         remove_file(&out_fname).unwrap();
 
         let mut c = Config::new();
-        c.password(PasswordType::Text("Swordfish".to_owned(), default_scrypt_params()));
+        c.password(PasswordType::Text("Swordfish".to_owned(), scrypt_defaults()));
         c.input_stream(InputStream::File(in_fname.to_owned()));
         c.output_stream(OutputStream::File(out_fname.to_owned()));
         c.decrypt();
@@ -483,7 +483,7 @@ mod tests {
         remove_file(&out_fname).unwrap();
 
         let mut c = Config::new();
-        c.password(PasswordType::Text("Swordfish".to_owned(), default_scrypt_params()));
+        c.password(PasswordType::Text("Swordfish".to_owned(), scrypt_defaults()));
         c.input_stream(InputStream::File(in_fname.to_owned()));
         c.output_stream(OutputStream::File(out_fname.to_owned()));
         c.decrypt();
@@ -504,7 +504,7 @@ mod tests {
         c.input_stream(InputStream::File(in_fname.to_owned()));
         c.output_stream(OutputStream::File(out_fname.to_owned()));
         c.initialization_vector(InitializationVector::GenerateFromRng);
-        c.password(PasswordType::Text("Booger".to_owned(), default_scrypt_params()));
+        c.password(PasswordType::Text("Booger".to_owned(), scrypt_defaults()));
         c.encrypt();
 
         match super::process(&c) {
@@ -530,7 +530,7 @@ mod tests {
         c.input_stream(InputStream::File(in_fname.to_owned()));
         c.output_stream(OutputStream::File(out_fname.to_owned()));
         c.initialization_vector(InitializationVector::GenerateFromRng);
-        c.password(PasswordType::Text("Booger".to_owned(), default_scrypt_params()));
+        c.password(PasswordType::Text("Booger".to_owned(), scrypt_defaults()));
         c.add_output_option(OutputOption::AllowOverwrite);
         c.remove_output_option(OutputOption::IncludeKeyMetadata);
         c.encrypt();

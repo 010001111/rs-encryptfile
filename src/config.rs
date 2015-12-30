@@ -28,6 +28,24 @@ pub enum OutputOption {
     /// If an output file exists and this is set, it will be overwritten.  If this is NOT set
     /// and the file exists, encryption/decryption will return an error.
     AllowOverwrite,
+    /// Controls whether metadata about the generated key is included in the encrypted output file.
+    /// For example, if scrypt is used, this metadata contains the logN,R,and P
+    /// parameters vaues that were provided to scrypt to
+    /// generate the key.  This provides a margin of safety in case the original parameters are
+    /// lost and the file needs to be decrypted; however, it also make it easier for an attacker
+    /// to run brute force attacks since he will know what parameters to use.
+    /// Note, this metadata does not include the
+    /// original password text or salt.  This setting only affects password methods that use the
+    /// `PasswordKeyGenMethod` enum.
+    ///
+    /// Disabling this and subsequently "forgetting" the parameters may not be terrible.
+    /// If you are the legitimate owner of the file, and you have a (small!) list of
+    /// passwords and salts that could have been used, and you can run your own brute-force
+    /// search with every conceivable scrypt parameter value that you might have used.  Annoying,
+    /// but recoverable.
+    ///
+    /// This setting enabled by default.
+    IncludeKeyMetadata,
 }
 
 /// Data input streams.
@@ -101,6 +119,7 @@ pub enum PasswordKeyGenMethod {
     /// Use the scrypt algorithm.
     /// http://www.tarsnap.com/scrypt/scrypt-slides.pdf
     Scrypt(ScryptLogN, ScryptR, ScryptP),
+    ReadFromFile,
 }
 /// Specifies the encryption password.
 pub enum PasswordType {
@@ -164,6 +183,7 @@ pub fn default_scrypt_params() -> PasswordKeyGenMethod {
 
 /// Returns a set of scrypt parameters tuned for file encryption: LogN 20, R 8, P 1
 /// See http://www.tarsnap.com/scrypt/scrypt-slides.pdf for more details.
+#[allow(dead_code)]
 pub fn scrypt_params_encrypt1() -> PasswordKeyGenMethod {
     PasswordKeyGenMethod::Scrypt(ScryptLogN(20), ScryptR(8), ScryptP(1))
 }
@@ -172,12 +192,15 @@ impl Config {
     /// Constructs a new Config with default settings.  At a minimum, you must set input
     /// streams and a password method, and configure it for encryption or decryption.
     pub fn new() -> Self {
+        let mut def_opts = HashSet::new();
+        def_opts.insert(OutputOption::IncludeKeyMetadata);
+
         Config {
             mode: Mode::Unknown,
             input_stream: InputStream::Unknown,
             output_stream: OutputStream::Unknown,
             output_format: OutputFormat::EncryptFile,
-            output_options: HashSet::new(),
+            output_options: def_opts,
             rng_mode: RngMode::OsIssac,
             initialization_vector: InitializationVector::GenerateFromRng,
             password: PasswordType::Unknown,
@@ -215,6 +238,10 @@ impl Config {
     /// Add an output option.
     pub fn add_output_option(&mut self, opt:OutputOption) -> &mut Self {
         self.output_options.insert(opt);
+        self
+    }
+    pub fn remove_output_option(&mut self, opt:OutputOption) -> &mut Self {
+        self.output_options.remove(&opt);
         self
     }
     /// Set the random number mode.  See the `RngMode` enum for information

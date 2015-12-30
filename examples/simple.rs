@@ -36,6 +36,7 @@ fn main() {
         "decrypt" => {
             let out_file = PathBuf::from(&in_file).file_name().unwrap().to_str().unwrap().to_owned();
             let out_file = out_file.replace(".enc", "");
+            c.add_output_option(ef::OutputOption::AllowOverwrite);
             c.output_stream(ef::OutputStream::File(out_file.to_owned()));
             c.decrypt();
         },

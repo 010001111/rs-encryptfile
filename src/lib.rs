@@ -106,11 +106,14 @@ pub enum EncryptError {
     UnexpectedVersion(u32, u32),
     InvalidHmacLength,
     HmacMismatch,
+    InvalidPasswordGenMethod,
+    InvalidKeyMetadataType(u32),
     UnexpectedEnumVariant(String),
+    NoKeyMetadataFound(String),
     ByteOrderError(byteorder::Error),
     IoError(std::io::Error),
     CryptoError(crypto_util::CryptoError),
-    InternalError,
+    InternalError(String),
 }
 
 impl From<std::io::Error> for EncryptError {
@@ -210,15 +213,22 @@ fn generate_iv(c: &Config) -> Result<config::IvArray, EncryptError> {
     Ok(iv)
 }
 
+fn make_key_from_method(pw:&str, salt:&str, m:&PasswordKeyGenMethod) -> Result<PwKeyArray, EncryptError> {
+    match m {
+        &PasswordKeyGenMethod::ReadFromFile => Err(EncryptError::InvalidPasswordGenMethod),
+        &PasswordKeyGenMethod::Scrypt(ref logn, ref r, ref p) => {
+            Ok(make_scrypt_key(pw, salt, logn, r, p))
+        }
+    }
+}
+
 fn get_pw_key(c: &Config) -> Result<PwKeyArray, EncryptError> {
     match *c.get_password() {
         PasswordType::Unknown => {
             Err(EncryptError::UnexpectedEnumVariant("Password type unknown not allowed here"
                                                         .to_owned()))
         }
-        PasswordType::Text(ref pw, PasswordKeyGenMethod::Scrypt(ref logn, ref r, ref p)) => {
-            Ok(make_scrypt_key(pw, &c.get_salt(), logn, r, p))
-        }
+        PasswordType::Text(ref pw, ref method) => make_key_from_method(pw,&c.get_salt(),method),
         PasswordType::Func(ref bf) => Ok((*bf)()),
     }
     .and_then(|pwkey| {
@@ -285,14 +295,8 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
     let mut read_buf: Vec<u8> = vec![0;c.get_buffer_size()];
     let mut write_buf: Vec<u8> = vec![0;c.get_buffer_size()];
 
-    let pwkey = try!(get_pw_key(c));
-    if config::slice_is_zeroed(&pwkey) {
-        return Err(EncryptError::PwKeyIsZeroed);
-    }
-
     let mut state = EncryptState {
         config: c,
-        pwkey: pwkey,
         iv: [0; IV_SIZE],
         read_buf: &mut read_buf,
         write_buf: &mut write_buf,

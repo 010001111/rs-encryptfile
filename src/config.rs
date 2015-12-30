@@ -118,6 +118,9 @@ pub enum PasswordKeyGenMethod {
     /// Use the scrypt algorithm.
     /// http://www.tarsnap.com/scrypt/scrypt-slides.pdf
     Scrypt(ScryptLogN, ScryptR, ScryptP),
+    /// Read the key parameters from the file.  This is valid for
+    /// decryption only, and only if `OutputOption::IncludeKeyMetadata`
+    /// was used when encrypting the file.
     ReadFromFile,
 }
 /// Specifies the encryption password.

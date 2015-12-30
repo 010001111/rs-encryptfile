@@ -1,14 +1,17 @@
 use std::io::{Read, Write, Seek};
 use std::collections::HashSet;
+use std::rc::Rc;
 
 pub const PW_KEY_SIZE: usize = 64;
 pub const IV_SIZE: usize = 16;
 
-pub type PwKeyArray = [u8; PW_KEY_SIZE];
+use std::clone::Clone;
 
+pub type PwKeyArray = [u8; PW_KEY_SIZE];
 pub type IvArray = [u8; IV_SIZE];
 
 /// The current encryption mode.  Initially set to Unknown.
+#[derive(Clone)]
 pub enum Mode {
     Unknown,
     Encrypt,
@@ -25,6 +28,7 @@ impl<T> SeekWrite for T where T: Seek + Write
 
 #[derive(PartialEq,Eq,Hash)]
 /// Output options.
+#[derive(Clone)]
 pub enum OutputOption {
     /// If the output file exists and this is set, it will be overwritten.  If this is NOT set
     /// and the file exists, encryption/decryption will return an error.
@@ -49,6 +53,7 @@ pub enum OutputOption {
 }
 
 /// Data input streams.
+#[derive(Clone)]
 pub enum InputStream {
     Unknown,
     /// Read from the specified file.
@@ -56,6 +61,7 @@ pub enum InputStream {
 }
 
 /// Data output streams.
+#[derive(Clone)]
 pub enum OutputStream {
     Unknown,
     /// Write to the specified file.
@@ -63,6 +69,7 @@ pub enum OutputStream {
 }
 
 /// Output format.
+#[derive(Clone)]
 pub enum OutputFormat {
     // EncryptedZip,
     /// The default output format.  This can only (currently) be read by this program.
@@ -73,6 +80,7 @@ pub enum OutputFormat {
 /// Currently this is only required when generating an initialization vector
 /// (`InitializationVector::GenerateFromRng`).  Note, when decrypting, you do not need
 /// to specify this.
+#[derive(Clone)]
 pub enum RngMode {
     /// Use the [Os RNG](https://doc.rust-lang.org/rand/rand/os/struct.OsRng.html) only
     Os,
@@ -88,32 +96,39 @@ pub enum RngMode {
     OsRandIssac,
     /// Use the specified function to generate random u8 values.  The function should return a
     /// random u8 each time it is called.
-    Func(Box<Fn() -> u8>),
+    Func(Rc<Box<Fn() -> u8>>),
 }
+
 
 /// Specifies the initialization vector.  Note, when decrypting, you do not need to specify
 /// this since the IV is in the file.
+#[derive(Clone)]
 pub enum InitializationVector {
     Unknown,
     /// Generate the vector randomly.  See `RngMode`.
     GenerateFromRng,
     /// Use the specified function to provide the IV.  It should return a fully populated IV
     /// array.
-    Func(Box<Fn() -> IvArray>),
+    Func(Rc<Box<Fn() -> IvArray>>),
 }
 
 /// Specifies the encryption method.
+#[derive(Clone)]
 pub enum EncryptionMethod {
     AesCbc256,
 }
 
+#[derive(Clone)]
 /// The Scrypt LogN parameter.
 pub struct ScryptLogN(pub u8);
+#[derive(Clone)]
 /// The Scrypt R parameter.
 pub struct ScryptR(pub u32);
+#[derive(Clone)]
 /// The Scrypt P parameter.
 pub struct ScryptP(pub u32);
 /// Controls how the encryption key is generated from a text password.
+#[derive(Clone)]
 pub enum PasswordKeyGenMethod {
     /// Use the scrypt algorithm.
     /// http://www.tarsnap.com/scrypt/scrypt-slides.pdf
@@ -124,6 +139,7 @@ pub enum PasswordKeyGenMethod {
     ReadFromFile,
 }
 /// Specifies the encryption password.
+#[derive(Clone)]
 pub enum PasswordType {
     Unknown,
     /// Use the specified text string and PasswordKeyGenMethod.
@@ -131,10 +147,10 @@ pub enum PasswordType {
     /// salt via `Config.salt()`.
     Text(String, PasswordKeyGenMethod),
     /// Use the specified function to provide the key.
-    Func(Box<Fn() -> PwKeyArray>),
+    Func(Rc<Box<Fn() -> PwKeyArray>>),
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum ValidateError {
     ModeNotSet,
     InvalidInputStream,
@@ -144,12 +160,26 @@ pub enum ValidateError {
     BufferTooSmall,
 }
 
+struct DerivedKeyStruct {
+    key: PwKeyArray
+}
+
+impl Clone for DerivedKeyStruct {
+    fn clone(&self) -> Self {
+        let ckey = self.key;
+        DerivedKeyStruct {
+            key: ckey
+        }
+    }
+}
+
 /// The main Configuration type.  This is a Builder object [1].
 ///
 /// A config object can be reused; for instance, you can initially configure it
 /// for encryption using `encrypt()`, then switch it to decryption with `decrypt()`.
 ///
 /// [1]: https://aturon.github.io/ownership/builders.html
+#[derive(Clone)]
 pub struct Config {
     mode: Mode,
     input_stream: InputStream,
@@ -162,6 +192,7 @@ pub struct Config {
     salt: String,
     encryption_method: EncryptionMethod,
     buffer_size: usize,
+    derived_key: Option<DerivedKeyStruct>
 }
 
 /// Returns true if the specfied slice contains all zero values, false otherwise.
@@ -209,6 +240,7 @@ impl Config {
             salt: "DefaultSalt".to_owned(),
             encryption_method: EncryptionMethod::AesCbc256,
             buffer_size: 65536,
+            derived_key: None
         }
     }
 
@@ -260,9 +292,10 @@ impl Config {
         self.initialization_vector = initialization_vector;
         self
     }
-    /// Set the password method.
+    /// Set the password method.  Also clears the derived key.
     pub fn password(&mut self, password: PasswordType) -> &mut Self {
         self.password = password;
+        self.derived_key = None;
         self
     }
     /// Set the salt.  Only used in password methods that require it; if not set,
@@ -281,6 +314,23 @@ impl Config {
         self.buffer_size = buffer_size;
         self
     }
+    /// Derive the encryption key.  The key is returned and is also
+    /// cached on this object (accessible via `get_derived_key()`).  See that function
+    /// for details on how long this cached version persists.
+    ///
+    /// It is not necessary to call this if you are just calling `process()` on a file.
+    /// But it is useful if you want to use the key to decrypt many files, or if you
+    /// want to use the key for other purposes (such as calculating HMACs).
+    pub fn derive_key(&mut self) -> Result<PwKeyArray, super::EncryptError>{
+        super::get_pw_key(self)
+            .map(|key| {
+                self.derived_key = Some(DerivedKeyStruct {
+                    key: key
+                });
+                key
+            })
+    }
+
     /// Validate the encryption object; it is not necessary to call this manually since the
     /// configuration will be validated when it is used.
     pub fn validate(&self) -> Result<(), ValidateError> {
@@ -342,6 +392,16 @@ impl Config {
     pub fn get_buffer_size(&self) -> usize {
         return self.buffer_size;
     }
+    /// If `derive_key()` has been called, returns the derived encryption key.  Otherwise returns
+    /// None.  Each time `password()` is called, the derived key will be reset to None.
+    pub fn get_derived_key(&self) -> Option<PwKeyArray> {
+        match &self.derived_key {
+            &None => None,
+            &Some(ref ks) => {
+                Some(ks.clone().key)
+            }
+        }
+    }
 }
 
 #[test]
@@ -380,11 +440,32 @@ fn validate() {
 
     let mut pd: [u8; PW_KEY_SIZE] = [0; PW_KEY_SIZE];
     pd[0] = 1;
-    c.password(PasswordType::Func(Box::new(move || pd)));
+    c.password(PasswordType::Func(Rc::new(Box::new(move || pd))));
     check_ok!(c);
 
     c.buffer_size(0);
     check!(c, ValidateError::BufferTooSmall);
     c.buffer_size(4096);
     check_ok!(c);
+}
+
+#[test]
+fn derived_key() {
+    fn are_eq(a:&[u8], b:&[u8]) -> bool {
+        a == b
+    }
+
+    let mut c = Config::new();
+    c.password(PasswordType::Text("Foo".to_owned(), scrypt_defaults()));
+    assert!(c.get_derived_key().is_none());
+    let key = c.derive_key().map_err(|e| panic!("Unexpected error: {:?}", e)).unwrap();
+    let keyx = c.get_derived_key().unwrap();
+    assert!(are_eq(&key,&keyx));
+
+    c.password(PasswordType::Text("Bar".to_owned(), scrypt_defaults()));
+    assert!(c.get_derived_key().is_none());
+    let key2 = c.derive_key().map_err(|e| panic!("Unexpected error: {:?}", e)).unwrap();
+    let key2x = c.get_derived_key().unwrap();
+    assert!(are_eq(&key2,&key2x));
+    assert!(!are_eq(&key,&key2));
 }

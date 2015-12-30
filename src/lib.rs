@@ -48,7 +48,7 @@
 //! [1]: https://github.com/DaGenix/rust-crypto
 //! [2]: https://en.wikipedia.org/wiki/Hash-based_message_authentication_code
 //!
-//! 
+//!
 //!
 //!
 //!
@@ -353,6 +353,7 @@ pub fn process(c: &Config) -> Result<(), EncryptError> {
 mod tests {
     use config::*;
     use std::env;
+    use std::rc::Rc;
 
     fn check_eq(xs: &[u8], ys: &[u8], failmsg: String) {
         assert!(xs == ys, failmsg);
@@ -418,14 +419,12 @@ mod tests {
 
         let pwkey: PwKeyArray = [87; PW_KEY_SIZE];
         let expected = pwkey;
-        let pwfn = Box::new(move || pwkey);
-        c.password(PasswordType::Func(pwfn));
+        c.password(PasswordType::Func(Rc::new(Box::new(move || pwkey))));
         let key = super::get_pw_key(&c).unwrap();
         check_eq(&expected, &key, format!("Func pwkey variant failed"));
 
         let pwkey: PwKeyArray = [0; PW_KEY_SIZE];
-        let pwfn = Box::new(move || pwkey);
-        c.password(PasswordType::Func(pwfn));
+        c.password(PasswordType::Func(Rc::new(Box::new(move || pwkey))));
         let key = super::get_pw_key(&c);
         let _ = key.map(|_| panic!("Expected error, but got valid key"));
     }
@@ -455,8 +454,7 @@ mod tests {
         }
 
         // test user-defined rng function
-        let rngfn = Box::new(|| 6);
-        c.rng_mode(RngMode::Func(rngfn));
+        c.rng_mode(RngMode::Func(Rc::new(Box::new(|| 6))));
         let expected: IvArray = [6; IV_SIZE];
         let geniv = super::get_iv(&c).unwrap();
         check_eq(&expected, &geniv, format!("Data iv variant failed"));
@@ -468,13 +466,13 @@ mod tests {
 
         let iv: IvArray = [89; IV_SIZE];
         let expected = iv;
-        let ivfn = Box::new(move || iv);
-        c.initialization_vector(InitializationVector::Func(ivfn));
+
+        c.initialization_vector(InitializationVector::Func(Rc::new(Box::new(move || iv))));
         let geniv = super::get_iv(&c).unwrap();
         check_eq(&geniv, &expected, format!("Func iv variant failed"));
 
         let iv: IvArray = [0; IV_SIZE];
-        c.initialization_vector(InitializationVector::Func(Box::new(move || iv)));
+        c.initialization_vector(InitializationVector::Func(Rc::new(Box::new(move || iv))));
         let geniv = super::get_iv(&c);
         let _ = geniv.map(|_| panic!("Expected error, but got valid iv"));
     }
